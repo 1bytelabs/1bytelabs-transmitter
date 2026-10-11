@@ -1,8 +1,8 @@
-ZOSMA RECEIVER — PROTÓTIPO PORTÁTIL PARA WINDOWS
+ZOSMA RECEIVER 0.1 BETA — PORTÁTIL PARA WINDOWS
 ZOSMA LABS — https://zosma.com.br
 
-Este primeiro protótipo serve para validar a descoberta e a recepção do vídeo
-enviado pelo Zosma Transmitter na rede local.
+O Zosma Receiver recebe vídeo e áudio enviados pelo Zosma Transmitter na rede
+local e oferece uma saída limpa em tela cheia para monitor ou telão.
 
 COMO TESTAR
 
@@ -19,13 +19,15 @@ Os dois computadores devem estar na mesma rede local. Para o primeiro teste,
 prefira conexão por cabo de rede e permita o acesso em redes privadas caso o
 Firewall do Windows pergunte.
 
-ESCOPO DESTE PRIMEIRO TESTE
+RECURSOS DESTA VERSÃO BETA
 
 - Descoberta automática de fontes NDI.
 - Recepção e prévia de vídeo com renderização em buffer duplo.
 - Reprodução do áudio recebido na saída padrão do Windows.
+- Opção para ativar ou desativar a reprodução do áudio.
 - Exibição da resolução e do FPS recebido.
-- Tela cheia, com saída pela tecla Esc.
+- Saída em tela cheia no monitor selecionado, com retorno pela tecla Esc.
+- Recorte interativo pelas laterais da prévia e botão para remover o corte.
 - Ainda não cria câmera virtual nem fonte direta no OBS.
 
 Este pacote é portátil e não exige a instalação do NDI Tools.
