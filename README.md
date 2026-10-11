@@ -4,7 +4,7 @@
 
 Aplicativo da [Zosma Labs](https://zosma.com.br) para transmitir vídeo e áudio pela rede local via NDI® no Windows, sem exigir a instalação do pacote completo do NDI Tools na máquina de origem.
 
-> **Versão atual: 0.3.7 Beta**
+> **Versão atual: 0.4.0 Beta**
 
 [Baixar a versão mais recente](https://github.com/zosmalabs/transmissor-ndi-portatil/releases/latest) · [Site da Zosma](https://zosma.com.br)
 
@@ -23,13 +23,25 @@ Aplicativo da [Zosma Labs](https://zosma.com.br) para transmitir vídeo e áudio
 - proteção automática para WhatsApp, WhatsApp Beta, WhatsApp Business, WhatsApp Web, Telegram Desktop e Telegram Web;
 - permissões temporárias de privacidade por execução;
 - botão de privacidade manual para ocultar imagem e áudio sem desconectar a fonte NDI;
-- medidor visual do nível de áudio enviado;
 - ocultação da imagem sem encerrar a fonte NDI;
 - operação em segundo plano pela bandeja do Windows;
 - monitoramento da interface de rede e da qualidade da transmissão;
 - configurações persistentes entre execuções.
 
 Na interface compacta, a opção **Enviar áudio** vem marcada por padrão. Ao desmarcá-la antes de iniciar, somente a imagem é transmitida.
+
+## Zosma Receiver
+
+A versão 0.4.0 Beta também inclui o **Zosma Receiver 0.1 Beta**, um receptor portátil para visualizar a fonte NDI sem instalar o NDI Tools.
+
+- descoberta automática das fontes NDI na rede local;
+- recepção de vídeo e áudio;
+- saída limpa em tela cheia para um monitor ou telão selecionado;
+- reprodução de áudio opcional;
+- recorte interativo pelas laterais da prévia;
+- funcionamento portátil, mantendo o executável e a DLL incluída na mesma pasta.
+
+O Receiver ainda não cria uma câmera virtual nem uma fonte NDI direta para outros programas.
 
 ## Modos de transmissão
 
