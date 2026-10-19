@@ -8,7 +8,7 @@ Aplicativo da [1Byte Labs](https://github.com/1bytelabs) para transmitir vídeo 
 
 > **Versão atual: 0.4.0 Beta**
 
-[Baixar a versão mais recente](https://github.com/1bytelabs/zosma-transmitter/releases/latest) · [Projetos da 1Byte Labs](https://github.com/1bytelabs)
+[Baixar a versão mais recente](https://github.com/1bytelabs/1bytelabs-transmitter/releases/latest) · [Projetos da 1Byte Labs](https://github.com/1bytelabs)
 
 ## Principais recursos
 
