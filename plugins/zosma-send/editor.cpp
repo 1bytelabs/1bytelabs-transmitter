@@ -136,7 +136,7 @@ void SendEditor::paint(HDC target) {
     SetViewportExtEx(dc,client.right,client.bottom,nullptr);
     text(dc,small_,L"1BYTE LABS  /  AUDIO OVER NETWORK",28,18,480,22,Green);
     text(dc,title_,L"1Byte Labs Send",28,44,400,42);
-    text(dc,small_,L"VST3  /  0.1.1",480,51,132,24,Muted,DT_RIGHT);
+    text(dc,small_,L"VST3  /  0.1.2",480,51,132,24,Muted,DT_RIGHT);
     rounded(dc,28,100,584,128,Card);
     const bool enabled=audio_.enabled.load(), processing=audio_.processing.load();
     const int status=audio_.status.load();

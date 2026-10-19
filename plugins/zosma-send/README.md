@@ -1,4 +1,4 @@
-# 1Byte Labs Send 0.1.1 — protótipo VST3
+# 1Byte Labs Send 0.1.2 — protótipo VST3
 
 Plugin experimental para Windows x64: recebe o áudio estéreo do REAPER,
 preserva a saída local e envia uma fonte NDI de áudio, sem vídeo ou captura
@@ -7,7 +7,7 @@ Não há promessa de eliminar engasgos nem de latência mínima.
 
 ## Instalação e primeiro teste
 
-1. Baixe o ZIP do artifact **1ByteLabs-Send-0.1.1-prototype-Windows-x64** no workflow
+1. Baixe o ZIP do artifact **1ByteLabs-Send-0.1.2-prototype-Windows-x64** no workflow
    **1Byte Labs Send VST3 - prototipo Windows** desta branch e extraia-o.
 2. Copie a pasta inteira `1Byte Labs Send.vst3` para
    `C:\Program Files\Common Files\VST3`. A DLL NDI deve permanecer em
