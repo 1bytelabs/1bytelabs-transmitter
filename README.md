@@ -105,3 +105,7 @@ NDI® é uma marca registrada da Vizrt NDI AB. Os avisos aplicáveis aos compone
 ## Licença
 
 Nenhuma licença foi definida para o código do projeto nesta fase Beta. Consulte também `THIRD_PARTY_NOTICES.md` para os componentes de terceiros.
+
+## Contato — 1Byte Labs
+
+[1bytelabs.com.br](https://1bytelabs.com.br) · [contato@1bytelabs.com.br](mailto:contato@1bytelabs.com.br)
