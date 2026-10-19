@@ -6,7 +6,7 @@ Aplicativo da [Zosma Labs](https://zosma.com.br) para transmitir vídeo e áudio
 
 > **Versão atual: 0.4.0 Beta**
 
-[Baixar a versão mais recente](https://github.com/zosmalabs/transmissor-ndi-portatil/releases/latest) · [Site da Zosma](https://zosma.com.br)
+[Baixar a versão mais recente](https://github.com/1bytelabs/1bytelabs-transmitter/releases/latest) · [Site da Zosma](https://zosma.com.br)
 
 ## Principais recursos
 
