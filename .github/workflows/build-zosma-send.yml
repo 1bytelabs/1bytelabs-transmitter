@@ -1,11 +1,11 @@
-name: Zosma Send VST3 - prototipo Windows
+name: 1Byte Labs Send VST3 - prototipo Windows
 on:
   workflow_dispatch:
   push:
     branches: [feature/zosma-send-vst3]
     paths: ['plugins/zosma-send/**', '.github/workflows/build-zosma-send.yml', 'third_party/ndi/include/**']
   pull_request:
-    branches: [main]
+    branches: [main, feature/zosma-send-vst3]
     paths: ['plugins/zosma-send/**', '.github/workflows/build-zosma-send.yml', 'third_party/ndi/include/**']
 permissions:
   contents: read
@@ -24,7 +24,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $bundle = Get-ChildItem build-send -Filter 'Zosma Send.vst3' -Directory -Recurse | Select-Object -First 1
+          $bundle = Get-ChildItem build-send -Filter '1Byte Labs Send.vst3' -Directory -Recurse | Select-Object -First 1
           $validator = Get-ChildItem build-send -Filter validator.exe -Recurse | Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
           if (-not $bundle -or -not $validator) { throw 'Bundle VST3 ou validator ausente' }
           & $validator.FullName $bundle.FullName 2>&1 | Tee-Object -FilePath validator.log
@@ -38,25 +38,25 @@ jobs:
           if (-not $dll) { throw 'Runtime NDI ausente' }
           New-Item -ItemType Directory -Force dist-send | Out-Null
           Copy-Item $bundle.FullName dist-send -Recurse
-          $binaryDir = Join-Path 'dist-send/Zosma Send.vst3' 'Contents/x86_64-win'
+          $binaryDir = Join-Path 'dist-send/1Byte Labs Send.vst3' 'Contents/x86_64-win'
           if (-not (Test-Path $binaryDir)) { throw 'Arquitetura inesperada do bundle' }
           Copy-Item $dll.FullName $binaryDir
           Copy-Item plugins/zosma-send/README.md dist-send/LEIA-ME.md
           Copy-Item THIRD_PARTY_NOTICES.md dist-send/AVISOS-NDI.md
           Copy-Item build-send/_deps/vst3sdk-src/LICENSE.txt dist-send/LICENCA-VST3-SDK.txt
           Copy-Item validator.log dist-send
-          Compress-Archive dist-send/* Zosma-Send-0.1.1-prototype-Windows-x64.zip -Force
+          Compress-Archive dist-send/* 1ByteLabs-Send-0.1.2-prototype-Windows-x64.zip -Force
       - name: Disponibilizar pacote para teste (sem release)
         uses: actions/upload-artifact@v4
         with:
-          name: Zosma-Send-0.1.1-prototype-Windows-x64
-          path: Zosma-Send-0.1.1-prototype-Windows-x64.zip
+          name: 1ByteLabs-Send-0.1.2-prototype-Windows-x64
+          path: 1ByteLabs-Send-0.1.2-prototype-Windows-x64.zip
           if-no-files-found: error
       - name: Guardar relatorio do validator
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Zosma-Send-validator
+          name: 1ByteLabs-Send-validator
           path: validator.log
           if-no-files-found: ignore
 
@@ -64,6 +64,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Zosma-Send-interface-preview
+          name: 1ByteLabs-Send-interface-preview
           path: build-send/editor*preview.bmp
           if-no-files-found: ignore

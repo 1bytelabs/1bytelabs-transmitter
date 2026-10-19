@@ -84,7 +84,7 @@ void NdiAudio::run() {
             if (!api) api=runtime.acquire();
             if (api) {
                 char name[64]{};
-                std::snprintf(name,sizeof(name),"Zosma Send %02d",requestedSlot);
+                std::snprintf(name,sizeof(name),"1Byte Labs Send %02d",requestedSlot);
                 NDIlib_send_create_t create{};
                 create.p_ndi_name=name;
                 create.clock_audio=false; create.clock_video=false;

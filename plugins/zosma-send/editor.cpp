@@ -65,7 +65,7 @@ Steinberg::tresult PLUGIN_API SendEditor::attached(void* parent,Steinberg::FIDSt
     const auto dpi=GetDpiForWindow(static_cast<HWND>(parent));
     scale_=dpi ? dpi/96. : 1.;
     rect={0,0,static_cast<Steinberg::int32>(Width*scale_),static_cast<Steinberg::int32>(Height*scale_)};
-    window_=CreateWindowExW(0,WindowClass,L"Zosma Send",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN,
+    window_=CreateWindowExW(0,WindowClass,L"1Byte Labs Send",WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN,
         0,0,rect.getWidth(),rect.getHeight(),static_cast<HWND>(parent),nullptr,module,this);
     if(!window_) return Steinberg::kResultFalse;
     auto p=[this](int value){return static_cast<int>(value*scale_);};
@@ -134,9 +134,9 @@ void SendEditor::paint(HDC target) {
     fill(dc,client,Bg);
     SetMapMode(dc,MM_ANISOTROPIC); SetWindowExtEx(dc,Width,Height,nullptr);
     SetViewportExtEx(dc,client.right,client.bottom,nullptr);
-    text(dc,small_,L"ZOSMA LABS  /  AUDIO OVER NETWORK",28,18,480,22,Green);
-    text(dc,title_,L"Zosma Send",28,44,400,42);
-    text(dc,small_,L"VST3  /  0.1.1",480,51,132,24,Muted,DT_RIGHT);
+    text(dc,small_,L"1BYTE LABS  /  AUDIO OVER NETWORK",28,18,480,22,Green);
+    text(dc,title_,L"1Byte Labs Send",28,44,400,42);
+    text(dc,small_,L"VST3  /  0.1.2",480,51,132,24,Muted,DT_RIGHT);
     rounded(dc,28,100,584,128,Card);
     const bool enabled=audio_.enabled.load(), processing=audio_.processing.load();
     const int status=audio_.status.load();
@@ -145,7 +145,7 @@ void SendEditor::paint(HDC target) {
     const COLORREF stateColor=!enabled ? Muted : status==3 ? Red : status==2 && processing ? Green : Amber;
     rounded(dc,48,120,9,9,stateColor,stateColor);
     text(dc,normal_,state,68,110,330,28,stateColor);
-    wchar_t source[80]; std::swprintf(source,80,L"Zosma Send %02d",audio_.slot.load());
+    wchar_t source[80]; std::swprintf(source,80,L"1Byte Labs Send %02d",audio_.slot.load());
     text(dc,number_,source,48,142,342,36);
     text(dc,small_,L"NUMERO DA FONTE",48,190,186,24,Muted);
     text(dc,small_,L"Estereo / NDI",428,190,164,24,Muted,DT_RIGHT);

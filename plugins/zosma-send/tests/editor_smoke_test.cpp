@@ -35,7 +35,7 @@ int main() {
     SetProcessDPIAware();
     auto* controller=new Controller;
     controller->initialize(nullptr);
-    auto parent=CreateWindowExW(0,L"STATIC",L"Zosma Send UI smoke test",WS_OVERLAPPEDWINDOW|WS_VISIBLE,
+    auto parent=CreateWindowExW(0,L"STATIC",L"1Byte Labs Send UI smoke test",WS_OVERLAPPEDWINDOW|WS_VISIBLE,
         0,0,720,600,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     require(parent!=nullptr);
     auto* editor=new zosma::SendEditor(controller,controller->audio);

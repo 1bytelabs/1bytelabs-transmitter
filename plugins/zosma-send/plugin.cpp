@@ -162,7 +162,7 @@ private:
 };
 }
 
-BEGIN_FACTORY_DEF("Zosma Labs","https://zosma.com.br","")
+BEGIN_FACTORY_DEF("1Byte Labs","https://1bytelabs.com.br","")
 DEF_CLASS2(INLINE_UID_FROM_FUID(zosma::pluginId),PClassInfo::kManyInstances,
-    kVstAudioEffectClass,"Zosma Send",0,"Fx|Tools","0.1.1",kVstVersionString,zosma::SendPlugin::create)
+    kVstAudioEffectClass,"1Byte Labs Send",0,"Fx|Tools","0.1.2",kVstVersionString,zosma::SendPlugin::create)
 END_FACTORY
