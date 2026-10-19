@@ -101,3 +101,7 @@ foram preservados para compatibilidade com projetos existentes. Ao atualizar,
 remova a pasta antiga `Zosma Send.vst3` antes de instalar `1Byte Labs Send.vst3`,
 para evitar duas cópias com o mesmo identificador. Faça uma nova varredura no
 REAPER e selecione a fonte `1Byte Labs Send 01` (ou o número configurado) no OBS.
+
+## 1Byte Labs
+
+[1bytelabs.com.br](https://1bytelabs.com.br) · [contato@1bytelabs.com.br](mailto:contato@1bytelabs.com.br)
