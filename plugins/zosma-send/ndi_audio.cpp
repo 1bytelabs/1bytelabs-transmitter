@@ -46,7 +46,7 @@ struct Runtime {
 Runtime runtime;
 }
 void NdiAudio::prepare(int rate) {
-    stop(); sampleRate_=rate;
+    stop(); sampleRate_=rate; sampleRate=rate;
     queue.prepare(static_cast<std::size_t>(rate/10)); // bounded 100 ms backlog
     dropped=0;
 }

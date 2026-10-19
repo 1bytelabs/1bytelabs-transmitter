@@ -1,4 +1,4 @@
-# Zosma Send 0.1.0 — protótipo VST3
+# Zosma Send 0.1.1 — protótipo VST3
 
 Plugin experimental para Windows x64: recebe o áudio estéreo do REAPER,
 preserva a saída local e envia uma fonte NDI de áudio, sem vídeo ou captura
@@ -7,15 +7,15 @@ Não há promessa de eliminar engasgos nem de latência mínima.
 
 ## Instalação e primeiro teste
 
-1. Baixe o ZIP do artifact **Zosma-Send-0.1.0-prototype-Windows-x64** no workflow
+1. Baixe o ZIP do artifact **Zosma-Send-0.1.1-prototype-Windows-x64** no workflow
    **Zosma Send VST3 - prototipo Windows** desta branch e extraia-o.
 2. Copie a pasta inteira `Zosma Send.vst3` para
    `C:\Program Files\Common Files\VST3`. A DLL NDI deve permanecer em
    `Zosma Send.vst3\Contents\x86_64-win`, junto ao binário.
 3. No REAPER, procure novos plugins VST3 e insira **Zosma Send** no final da
    cadeia de efeitos do master, depois dos efeitos usados na mixagem.
-4. Na interface genérica do REAPER escolha **Source number** (1–16) e ligue
-   **Send NDI**. O nome na rede será `Zosma Send 01`, por exemplo, com o
+4. Na interface do Zosma escolha **Numero da fonte** (1–16) e clique em
+   **Ligar envio**. O nome na rede será `Zosma Send 01`, por exemplo, com o
    prefixo do computador acrescentado pelo NDI.
 5. No OBS da outra máquina, use a entrada NDI que você já utiliza e selecione
    essa fonte. Desative o envio antigo durante a comparação para evitar duplicação.
@@ -24,9 +24,22 @@ Não há promessa de eliminar engasgos nem de latência mínima.
 O REAPER precisa estar processando áudio. Se necessário, habilite seu
 processamento de efeitos com o transporte parado. O plugin não transmite
 durante renderização offline. Bypass ou suspensão do host interrompem a
-alimentação de áudio; `Send NDI` é o controle recomendado para desligar o envio.
+alimentação de áudio; O botão de envio é o controle recomendado para desligar o envio.
 Ao salvar um projeto, o número da fonte e a opção de envio são preservados.
 Use números diferentes para instâncias simultâneas no mesmo computador.
+
+## Interface ao vivo
+
+A janela própria tem tema escuro, botão de envio e seleção de fonte. Conexão,
+fila e perdas são lidas diretamente dos atomics a cada 33 ms, inclusive se
+não houver novos callbacks de áudio. Medidores L/R mostram o pico da entrada
+do REAPER em dBFS, com queda suave e aviso vermelho de pico em 0 dBFS por
+1 segundo. São medidores de entrada, não confirmação de áudio recebido no OBS.
+A janela não depende de fechar e reabrir para atualizar.
+
+O timer e toda a pintura ficam na thread da interface; o áudio só calcula
+picos por bloco e publica atomics lock-free. Os controles notificam o host
+para automação e persistência. A interface genérica continua como alternativa.
 
 ## Diagnóstico
 
@@ -58,13 +71,16 @@ O CMake fixa o SDK VST3 em um commit e não usa VSTGUI/JUCE.
 
 ```powershell
 cmake -S plugins/zosma-send -B build-send -A x64
-cmake --build build-send --config Release --target zosma-send zosma-send-queue-test validator --parallel
+cmake --build build-send --config Release --target zosma-send zosma-send-queue-test zosma-send-editor-test validator --parallel
 ctest --test-dir build-send -C Release --output-on-failure
 ```
 
 O workflow executa o validator VST3 e empacota o runtime NDI da mesma fonte
 usada pelo workflow do Transmitter. Não publica releases. O projeto principal
 continua sendo compilado pelo seu CMake original.
+
+O teste Windows da interface verifica abertura, botão, seleção de fonte,
+telemetria e dez ciclos de fechar/reabrir; salva capturas para inspeção.
 
 Testes portáteis sem SDK/Windows:
 

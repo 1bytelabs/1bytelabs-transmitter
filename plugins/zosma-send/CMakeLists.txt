@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(ZosmaSend VERSION 0.1.0 LANGUAGES CXX)
+project(ZosmaSend VERSION 0.1.1 LANGUAGES CXX)
 
 include(CTest)
 find_package(Threads REQUIRED)
@@ -30,7 +30,7 @@ FetchContent_Declare(vst3sdk
 FetchContent_MakeAvailable(vst3sdk)
 smtg_enable_vst3_sdk()
 smtg_add_vst3plugin(zosma-send PACKAGE_NAME "Zosma Send" SOURCES_LIST
-    plugin.cpp ndi_audio.cpp
+    plugin.cpp ndi_audio.cpp editor.cpp
     ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
 )
 target_compile_features(zosma-send PRIVATE cxx_std_17)
@@ -40,7 +40,16 @@ target_include_directories(zosma-send PRIVATE
 target_compile_definitions(zosma-send PRIVATE
     NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00
     PROCESSINGNDILIB_STATIC NDILIB_CPP_DEFAULT_CONSTRUCTORS=0)
-target_link_libraries(zosma-send PRIVATE sdk avrt)
+target_link_libraries(zosma-send PRIVATE sdk avrt user32 gdi32 uxtheme)
+add_executable(zosma-send-editor-test tests/editor_smoke_test.cpp editor.cpp ndi_audio.cpp)
+target_compile_features(zosma-send-editor-test PRIVATE cxx_std_17)
+target_include_directories(zosma-send-editor-test PRIVATE ${vst3sdk_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ndi/include)
+target_compile_definitions(zosma-send-editor-test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
+    _WIN32_WINNT=0x0A00 PROCESSINGNDILIB_STATIC NDILIB_CPP_DEFAULT_CONSTRUCTORS=0)
+target_link_libraries(zosma-send-editor-test PRIVATE sdk avrt user32 gdi32 uxtheme)
+add_test(NAME editor-smoke COMMAND zosma-send-editor-test)
 if(MSVC)
     target_compile_options(zosma-send PRIVATE /W4 /utf-8 /EHsc)
+    target_compile_options(zosma-send-editor-test PRIVATE /W4 /utf-8 /EHsc)
 endif()

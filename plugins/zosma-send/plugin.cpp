@@ -1,4 +1,5 @@
 #include "ndi_audio.h"
+#include "editor.h"
 #include "public.sdk/source/vst/vstsinglecomponenteffect.h"
 #include "public.sdk/source/main/pluginfactory.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
@@ -15,10 +16,21 @@ const FUID pluginId(0x69F84583,0x68334CD9,0xA39A9A47,0x3B3FA714);
 enum : ParamID { Send=0, Source=1, Status=2, Drops=3, Queued=4 };
 
 // Combined component deliberately shares only atomic controls with its worker.
-// Host generic controls provide the prototype UI; there is no custom editor.
+// Native editor polls only atomics; host audio processing never paints UI.
 class SendPlugin final : public SingleComponentEffect {
 public:
     static FUnknown* create(void*) { return static_cast<IAudioProcessor*>(new SendPlugin); }
+    IPlugView* PLUGIN_API createView(FIDString name) override {
+        return name && std::strcmp(name,ViewType::kEditor)==0 ? new SendEditor(this,audio) : nullptr;
+    }
+    ParamValue PLUGIN_API getParamNormalized(ParamID id) override {
+        if(id==Send) return audio.enabled.load() ? 1. : 0.;
+        if(id==Source) return (audio.slot.load()-1)/15.;
+        if(id==Status) return audio.status.load()/3.;
+        if(id==Drops) return std::min(1.,audio.dropped.load()/1000000.);
+        if(id==Queued) return std::min(1.,audio.queue.available()*10./audio.sampleRate.load());
+        return SingleComponentEffect::getParamNormalized(id);
+    }
     tresult PLUGIN_API initialize(FUnknown* context) override {
         const auto result=SingleComponentEffect::initialize(context);
         if (result!=kResultOk) return result;
@@ -119,6 +131,20 @@ private:
         if(!inputs || !outputs) return;
         const bool leftSilent=(in.silenceFlags & 1)!=0;
         const bool rightSilent=(in.silenceFlags & 2)!=0;
+        static_assert(std::atomic<float>::is_always_lock_free);
+        if(data.processMode==kRealtime) {
+            for(int ch=0;ch<2;++ch) {
+                float peak=0;
+                if(inputs[ch] && !(in.silenceFlags & (uint64(1)<<ch))) {
+                    for(int32 i=0;i<data.numSamples;++i) {
+                        const float sample=static_cast<float>(std::abs(inputs[ch][i]));
+                        if(std::isfinite(sample)) peak=std::max(peak,sample);
+                    }
+                }
+                auto previous=audio.peaks[ch].load(std::memory_order_relaxed);
+                while(previous<peak && !audio.peaks[ch].compare_exchange_weak(previous,peak,std::memory_order_relaxed)) {}
+            }
+        }
         // Queue first: host may alias input and output buffers.
         if(audio.enabled.load() && audio.processing.load() && data.processMode==kRealtime) {
             if(!audio.queue.push(inputs[0],inputs[1],static_cast<std::size_t>(data.numSamples),leftSilent,rightSilent))
@@ -138,5 +164,5 @@ private:
 
 BEGIN_FACTORY_DEF("Zosma Labs","https://zosma.com.br","")
 DEF_CLASS2(INLINE_UID_FROM_FUID(zosma::pluginId),PClassInfo::kManyInstances,
-    kVstAudioEffectClass,"Zosma Send",0,"Fx|Tools","0.1.0",kVstVersionString,zosma::SendPlugin::create)
+    kVstAudioEffectClass,"Zosma Send",0,"Fx|Tools","0.1.1",kVstVersionString,zosma::SendPlugin::create)
 END_FACTORY

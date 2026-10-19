@@ -17,8 +17,8 @@ jobs:
       - name: Configurar VST3 isoladamente
         run: cmake -S plugins/zosma-send -B build-send -A x64
       - name: Compilar plugin, testes e validator
-        run: cmake --build build-send --config Release --target zosma-send zosma-send-queue-test validator --parallel
-      - name: Testar fila de audio
+        run: cmake --build build-send --config Release --target zosma-send zosma-send-queue-test zosma-send-editor-test validator --parallel
+      - name: Testar fila e interface nativa
         run: ctest --test-dir build-send -C Release --output-on-failure
       - name: Validar VST3 e montar pacote
         shell: pwsh
@@ -45,12 +45,12 @@ jobs:
           Copy-Item THIRD_PARTY_NOTICES.md dist-send/AVISOS-NDI.md
           Copy-Item build-send/_deps/vst3sdk-src/LICENSE.txt dist-send/LICENCA-VST3-SDK.txt
           Copy-Item validator.log dist-send
-          Compress-Archive dist-send/* Zosma-Send-0.1.0-prototype-Windows-x64.zip -Force
+          Compress-Archive dist-send/* Zosma-Send-0.1.1-prototype-Windows-x64.zip -Force
       - name: Disponibilizar pacote para teste (sem release)
         uses: actions/upload-artifact@v4
         with:
-          name: Zosma-Send-0.1.0-prototype-Windows-x64
-          path: Zosma-Send-0.1.0-prototype-Windows-x64.zip
+          name: Zosma-Send-0.1.1-prototype-Windows-x64
+          path: Zosma-Send-0.1.1-prototype-Windows-x64.zip
           if-no-files-found: error
       - name: Guardar relatorio do validator
         if: always()
@@ -58,4 +58,12 @@ jobs:
         with:
           name: Zosma-Send-validator
           path: validator.log
+          if-no-files-found: ignore
+
+      - name: Guardar capturas da interface
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zosma-Send-interface-preview
+          path: build-send/editor*preview.bmp
           if-no-files-found: ignore
