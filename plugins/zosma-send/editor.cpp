@@ -204,6 +204,7 @@ LRESULT CALLBACK SendEditor::windowProc(HWND window,UINT msg,WPARAM wp,LPARAM lp
         if(item->CtlID!=100) break;
         const bool on=self->audio_.enabled.load();
         auto color=on ? RGB(39,84,72) : Green;
+        fill(item->hDC,item->rcItem,Card);
         const int saved=SaveDC(item->hDC);
         SetMapMode(item->hDC,MM_ANISOTROPIC); SetWindowExtEx(item->hDC,178,46,nullptr);
         SetViewportExtEx(item->hDC,item->rcItem.right,item->rcItem.bottom,nullptr);
