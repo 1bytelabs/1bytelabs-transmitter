@@ -1,5 +1,5 @@
 1BYTE LABS RECEIVER 0.1 BETA — PORTÁTIL PARA WINDOWS
-1BYTE LABS — https://github.com/zosmalabs
+1BYTE LABS — https://1bytelabs.com.br
 
 O 1Byte Labs Receiver recebe vídeo e áudio enviados pelo 1Byte Labs Transmitter na rede
 local e oferece uma saída limpa em tela cheia para monitor ou telão.

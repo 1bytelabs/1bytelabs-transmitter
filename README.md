@@ -1,4 +1,4 @@
-<p align="center"><img src="./assets/1bytelabs-cover.svg" alt="zosma-transmitter — 1Byte Labs" width="100%" /></p>
+<p align="center"><img src="./assets/1bytelabs-cover.svg" alt="1Byte Labs Transmitter — 1Byte Labs" width="100%" /></p>
 
 # 1Byte Labs Transmitter
 
@@ -8,7 +8,7 @@ Aplicativo da [1Byte Labs](https://github.com/1bytelabs) para transmitir vídeo 
 
 > **Versão atual: 0.4.0 Beta**
 
-[Baixar a versão mais recente](https://github.com/1bytelabs/transmissor-ndi-portatil/releases/latest) · [Projetos da 1Byte Labs](https://github.com/1bytelabs)
+[Baixar a versão mais recente](https://github.com/1bytelabs/zosma-transmitter/releases/latest) · [Projetos da 1Byte Labs](https://github.com/1bytelabs)
 
 ## Principais recursos
 
@@ -32,9 +32,9 @@ Aplicativo da [1Byte Labs](https://github.com/1bytelabs) para transmitir vídeo 
 
 Na interface compacta, a opção **Enviar áudio** vem marcada por padrão. Ao desmarcá-la antes de iniciar, somente a imagem é transmitida.
 
-## Zosma Receiver
+## 1Byte Labs Receiver
 
-A versão 0.4.0 Beta também inclui o **Zosma Receiver 0.1 Beta**, um receptor portátil para visualizar a fonte NDI sem instalar o NDI Tools.
+A versão 0.4.0 Beta também inclui o **1Byte Labs Receiver 0.1 Beta**, um receptor portátil para visualizar a fonte NDI sem instalar o NDI Tools.
 
 - descoberta automática das fontes NDI na rede local;
 - recepção de vídeo e áudio;
