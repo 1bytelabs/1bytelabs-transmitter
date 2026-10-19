@@ -1,0 +1,69 @@
+name: Zosma Send VST3 - prototipo Windows
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/zosma-send-vst3]
+    paths: ['plugins/zosma-send/**', '.github/workflows/build-zosma-send.yml', 'third_party/ndi/include/**']
+  pull_request:
+    branches: [main]
+    paths: ['plugins/zosma-send/**', '.github/workflows/build-zosma-send.yml', 'third_party/ndi/include/**']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configurar VST3 isoladamente
+        run: cmake -S plugins/zosma-send -B build-send -A x64
+      - name: Compilar plugin, testes e validator
+        run: cmake --build build-send --config Release --target zosma-send zosma-send-queue-test zosma-send-editor-test validator --parallel
+      - name: Testar fila e interface nativa
+        run: ctest --test-dir build-send -C Release --output-on-failure
+      - name: Validar VST3 e montar pacote
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Get-ChildItem build-send -Filter 'Zosma Send.vst3' -Directory -Recurse | Select-Object -First 1
+          $validator = Get-ChildItem build-send -Filter validator.exe -Recurse | Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          if (-not $bundle -or -not $validator) { throw 'Bundle VST3 ou validator ausente' }
+          & $validator.FullName $bundle.FullName 2>&1 | Tee-Object -FilePath validator.log
+          if ($LASTEXITCODE -ne 0) { throw 'VST3 validator falhou' }
+          # Same redistributable source as the existing Transmitter build.
+          $runtimeZip = Join-Path $env:RUNNER_TEMP 'zosma-runtime.zip'
+          Invoke-WebRequest 'https://github.com/zosmalabs/zosma-transmitter/releases/download/v0.3.1-beta/Zosma-Transmitter-v0.3.1-beta-Windows-x64.zip' -OutFile $runtimeZip
+          $runtimeDir = Join-Path $env:RUNNER_TEMP 'zosma-runtime'
+          Expand-Archive $runtimeZip $runtimeDir -Force
+          $dll = Get-ChildItem $runtimeDir -Filter Processing.NDI.Lib.x64.dll -Recurse | Select-Object -First 1
+          if (-not $dll) { throw 'Runtime NDI ausente' }
+          New-Item -ItemType Directory -Force dist-send | Out-Null
+          Copy-Item $bundle.FullName dist-send -Recurse
+          $binaryDir = Join-Path 'dist-send/Zosma Send.vst3' 'Contents/x86_64-win'
+          if (-not (Test-Path $binaryDir)) { throw 'Arquitetura inesperada do bundle' }
+          Copy-Item $dll.FullName $binaryDir
+          Copy-Item plugins/zosma-send/README.md dist-send/LEIA-ME.md
+          Copy-Item THIRD_PARTY_NOTICES.md dist-send/AVISOS-NDI.md
+          Copy-Item build-send/_deps/vst3sdk-src/LICENSE.txt dist-send/LICENCA-VST3-SDK.txt
+          Copy-Item validator.log dist-send
+          Compress-Archive dist-send/* Zosma-Send-0.1.1-prototype-Windows-x64.zip -Force
+      - name: Disponibilizar pacote para teste (sem release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zosma-Send-0.1.1-prototype-Windows-x64
+          path: Zosma-Send-0.1.1-prototype-Windows-x64.zip
+          if-no-files-found: error
+      - name: Guardar relatorio do validator
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zosma-Send-validator
+          path: validator.log
+          if-no-files-found: ignore
+
+      - name: Guardar capturas da interface
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zosma-Send-interface-preview
+          path: build-send/editor*preview.bmp
+          if-no-files-found: ignore
