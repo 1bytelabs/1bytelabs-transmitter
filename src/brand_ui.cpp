@@ -8,7 +8,7 @@
 
 namespace {
 constexpr wchar_t kMainClass[] = L"TransmissorNDIPortatilV3";
-constexpr wchar_t kAboutClass[] = L"ZosmaTransmitterAboutV1";
+constexpr wchar_t kAboutClass[] = L"OneByteLabsTransmitterAboutV1";
 constexpr UINT_PTR kStyleTimer = 93;
 constexpr int kIdAbout = 1501;
 constexpr int kIdSite = 1502;
@@ -207,17 +207,17 @@ LRESULT CALLBACK buttonProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR,
 }
 
 void styleOne(HWND child) {
-    if (!child || GetPropW(child, L"ZosmaPremium")) return;
+    if (!child || GetPropW(child, L"OneByteLabsPremium")) return;
     wchar_t cls[64]{};
     GetClassNameW(child, cls, static_cast<int>(std::size(cls)));
     if (_wcsicmp(cls, L"Button") == 0) {
         SetWindowSubclass(child, buttonProc, 71, 0);
         roundControl(child, 12);
-        SetPropW(child, L"ZosmaPremium", reinterpret_cast<HANDLE>(1));
+        SetPropW(child, L"OneByteLabsPremium", reinterpret_cast<HANDLE>(1));
         InvalidateRect(child, nullptr, TRUE);
     } else if (_wcsicmp(cls, L"Edit") == 0 || _wcsicmp(cls, WC_COMBOBOXW) == 0) {
         roundControl(child, 10);
-        SetPropW(child, L"ZosmaPremium", reinterpret_cast<HANDLE>(1));
+        SetPropW(child, L"OneByteLabsPremium", reinterpret_cast<HANDLE>(1));
     }
 }
 
@@ -270,7 +270,7 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         BOOL dark = TRUE;
         DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
         HFONT font = makeFont(15, FW_SEMIBOLD);
-        HWND site = CreateWindowExW(0, L"BUTTON", L"Projetos no GitHub", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        HWND site = CreateWindowExW(0, L"BUTTON", L"Visitar site", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             28, 382, 170, 38, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdSite)), GetModuleHandleW(nullptr), nullptr);
         HWND licenses = CreateWindowExW(0, L"BUTTON", L"Licenças e componentes", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             210, 382, 210, 38, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdLicenses)), GetModuleHandleW(nullptr), nullptr);
@@ -343,7 +343,7 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (smallFont) SelectObject(dc, smallFont);
         SetTextColor(dc, kMuted);
         r = {48, 178, 530, 208};
-        DrawTextW(dc, L"1bytelabs.com.br", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"1bytelabs.com.br  ·  contato@1bytelabs.com.br", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
         if (bold) SelectObject(dc, bold);
         SetTextColor(dc, kText);

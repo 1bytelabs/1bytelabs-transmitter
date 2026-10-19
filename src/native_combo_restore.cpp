@@ -18,7 +18,7 @@ BOOL CALLBACK restoreChild(HWND child, LPARAM) {
     // usada por brand_ui.cpp para que o timer de estilo não tente arredondá-los novamente.
     if (_wcsicmp(cls, WC_COMBOBOXW) == 0 || _wcsicmp(cls, L"Edit") == 0) {
         SetWindowRgn(child, nullptr, TRUE);
-        SetPropW(child, L"ZosmaPremium", reinterpret_cast<HANDLE>(1));
+        SetPropW(child, L"OneByteLabsPremium", reinterpret_cast<HANDLE>(1));
         RedrawWindow(child, nullptr, nullptr,
                      RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
     }

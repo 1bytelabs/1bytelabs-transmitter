@@ -24,9 +24,9 @@ namespace {
 using NdiLoadFunction = const NDIlib_v6* (*)();
 using namespace std::chrono_literals;
 
-constexpr wchar_t kWindowClass[] = L"ZosmaReceiverWindowV1";
-constexpr wchar_t kPreviewClass[] = L"ZosmaReceiverPreviewV1";
-constexpr wchar_t kOutputClass[] = L"ZosmaReceiverOutputV1";
+constexpr wchar_t kWindowClass[] = L"OneByteLabsReceiverWindowV1";
+constexpr wchar_t kPreviewClass[] = L"OneByteLabsReceiverPreviewV1";
+constexpr wchar_t kOutputClass[] = L"OneByteLabsReceiverOutputV1";
 constexpr UINT kFrameReady = WM_APP + 1;
 constexpr UINT kReceiverStopped = WM_APP + 2;
 constexpr UINT_PTR kDiscoveryTimer = 100;

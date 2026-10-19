@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.24)
-project(ZosmaTransmitter VERSION 0.4.0 LANGUAGES CXX)
+project(OneByteLabsTransmitter VERSION 0.4.0 LANGUAGES CXX)
 
 if(NOT WIN32)
   message(FATAL_ERROR "Este aplicativo suporta Windows 10/11 x64.")
 endif()
 
-add_executable(zosma-transmitter WIN32
+add_executable(onebytelabs-transmitter WIN32
   src/main.cpp
   src/capture.cpp
   src/ndi_sender.cpp
@@ -20,7 +20,7 @@ add_executable(zosma-transmitter WIN32
   src/resources.rc
 )
 
-add_executable(zosma-receiver WIN32
+add_executable(onebytelabs-receiver WIN32
   src/receiver_main.cpp
   src/resources.rc
 )
@@ -31,9 +31,9 @@ set_source_files_properties(src/ndi_sender.cpp PROPERTIES
   COMPILE_DEFINITIONS "NDI_SENDER_IMPL=1"
 )
 
-target_compile_features(zosma-transmitter PRIVATE cxx_std_20)
-target_compile_features(zosma-receiver PRIVATE cxx_std_20)
-target_compile_definitions(zosma-transmitter PRIVATE
+target_compile_features(onebytelabs-transmitter PRIVATE cxx_std_20)
+target_compile_features(onebytelabs-receiver PRIVATE cxx_std_20)
+target_compile_definitions(onebytelabs-transmitter PRIVATE
   UNICODE
   _UNICODE
   WINVER=0x0A00
@@ -44,7 +44,7 @@ target_compile_definitions(zosma-transmitter PRIVATE
   NDILIB_CPP_DEFAULT_CONSTRUCTORS=0
 )
 
-target_compile_definitions(zosma-receiver PRIVATE
+target_compile_definitions(onebytelabs-receiver PRIVATE
   UNICODE
   _UNICODE
   WINVER=0x0A00
@@ -55,17 +55,17 @@ target_compile_definitions(zosma-receiver PRIVATE
   NDILIB_CPP_DEFAULT_CONSTRUCTORS=0
 )
 
-target_include_directories(zosma-transmitter PRIVATE
+target_include_directories(onebytelabs-transmitter PRIVATE
   src
   third_party/ndi/include
 )
 
-target_include_directories(zosma-receiver PRIVATE
+target_include_directories(onebytelabs-receiver PRIVATE
   src
   third_party/ndi/include
 )
 
-target_link_libraries(zosma-transmitter PRIVATE
+target_link_libraries(onebytelabs-transmitter PRIVATE
   user32
   gdi32
   comctl32
@@ -81,7 +81,7 @@ target_link_libraries(zosma-transmitter PRIVATE
   avrt
 )
 
-target_link_libraries(zosma-receiver PRIVATE
+target_link_libraries(onebytelabs-receiver PRIVATE
   user32
   gdi32
   comctl32
@@ -91,27 +91,27 @@ target_link_libraries(zosma-receiver PRIVATE
 )
 
 if(MSVC)
-  target_compile_options(zosma-transmitter PRIVATE
+  target_compile_options(onebytelabs-transmitter PRIVATE
     /W4
     /permissive-
     /utf-8
     /EHsc
     /FIui_compat.h
   )
-  target_compile_options(zosma-receiver PRIVATE
+  target_compile_options(onebytelabs-receiver PRIVATE
     /W4
     /permissive-
     /utf-8
     /EHsc
   )
-  target_link_options(zosma-transmitter PRIVATE /SUBSYSTEM:WINDOWS /MANIFEST:NO)
-  target_link_options(zosma-receiver PRIVATE /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+  target_link_options(onebytelabs-transmitter PRIVATE /SUBSYSTEM:WINDOWS /MANIFEST:NO)
+  target_link_options(onebytelabs-receiver PRIVATE /SUBSYSTEM:WINDOWS /MANIFEST:NO)
 endif()
 
-set_target_properties(zosma-transmitter PROPERTIES
+set_target_properties(onebytelabs-transmitter PROPERTIES
   OUTPUT_NAME "1Byte Labs Transmitter"
 )
 
-set_target_properties(zosma-receiver PROPERTIES
+set_target_properties(onebytelabs-receiver PROPERTIES
   OUTPUT_NAME "1Byte Labs Receiver"
 )

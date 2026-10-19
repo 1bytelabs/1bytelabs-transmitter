@@ -8,7 +8,7 @@
 
 namespace {
 constexpr wchar_t kMainClass[] = L"TransmissorNDIPortatilV3";
-constexpr wchar_t kAboutClass[] = L"ZosmaTransmitterAboutStableV1";
+constexpr wchar_t kAboutClass[] = L"OneByteLabsTransmitterAboutStableV1";
 constexpr UINT_PTR kOneShotStyleTimer = 193;
 
 constexpr int kIdProtected = 1007;
@@ -282,7 +282,7 @@ LRESULT CALLBACK buttonProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR,
 }
 
 void styleOne(HWND child) {
-    if (!child || GetPropW(child, L"ZosmaStableStyled")) return;
+    if (!child || GetPropW(child, L"OneByteLabsStableStyled")) return;
     wchar_t cls[64]{};
     GetClassNameW(child, cls, static_cast<int>(std::size(cls)));
     if (_wcsicmp(cls, L"Button") == 0) {
@@ -290,17 +290,17 @@ void styleOne(HWND child) {
         const UINT type = static_cast<UINT>(GetWindowLongPtrW(child, GWL_STYLE) & BS_TYPEMASK);
         // Uma região arredondada no checkbox corta o quadrado localizado na borda esquerda.
         if (type != BS_AUTOCHECKBOX && type != BS_CHECKBOX) roundControl(child, 12);
-        SetPropW(child, L"ZosmaStableStyled", reinterpret_cast<HANDLE>(1));
+        SetPropW(child, L"OneByteLabsStableStyled", reinterpret_cast<HANDLE>(1));
         InvalidateRect(child, nullptr, FALSE);
     } else if (_wcsicmp(cls, L"Edit") == 0) {
         roundControl(child, 10);
-        SetPropW(child, L"ZosmaStableStyled", reinterpret_cast<HANDLE>(1));
+        SetPropW(child, L"OneByteLabsStableStyled", reinterpret_cast<HANDLE>(1));
     } else if (_wcsicmp(cls, WC_COMBOBOXW) == 0) {
         SetWindowTheme(child, L"", L"");
         SetWindowLongPtrW(child, GWL_STYLE, GetWindowLongPtrW(child, GWL_STYLE) & ~WS_BORDER);
         SetWindowSubclass(child, comboProc, kComboSubclass, 0);
         roundControl(child, 10);
-        SetPropW(child, L"ZosmaStableStyled", reinterpret_cast<HANDLE>(1));
+        SetPropW(child, L"OneByteLabsStableStyled", reinterpret_cast<HANDLE>(1));
         InvalidateRect(child, nullptr, TRUE);
     }
 }
@@ -337,7 +337,7 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         BOOL dark = TRUE;
         DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
         HFONT font = makeFont(15, FW_SEMIBOLD);
-        HWND site = CreateWindowExW(0, L"BUTTON", L"Projetos no GitHub", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        HWND site = CreateWindowExW(0, L"BUTTON", L"Visitar site", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             28, 382, 170, 38, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdSite)), GetModuleHandleW(nullptr), nullptr);
         HWND licenses = CreateWindowExW(0, L"BUTTON", L"Licenças e componentes", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             210, 382, 210, 38, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdLicenses)), GetModuleHandleW(nullptr), nullptr);
@@ -403,7 +403,7 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (smallFont) SelectObject(dc, smallFont);
         SetTextColor(dc, kMuted);
         r = {48, 178, 530, 208};
-        DrawTextW(dc, L"1bytelabs.com.br", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"1bytelabs.com.br  ·  contato@1bytelabs.com.br", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
         if (bold) SelectObject(dc, bold);
         SetTextColor(dc, kText);
