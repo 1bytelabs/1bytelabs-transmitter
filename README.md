@@ -1,12 +1,14 @@
+<p align="center"><img src="./assets/1bytelabs-cover.svg" alt="zosma-transmitter — 1Byte Labs" width="100%" /></p>
+
 # 1Byte Labs Transmitter
 
 **Transmissão NDI portátil com foco em simplicidade, controle e privacidade.**
 
-Aplicativo da [1Byte Labs](https://github.com/zosmalabs) para transmitir vídeo e áudio pela rede local via NDI® no Windows, sem exigir a instalação do pacote completo do NDI Tools na máquina de origem.
+Aplicativo da [1Byte Labs](https://github.com/1bytelabs) para transmitir vídeo e áudio pela rede local via NDI® no Windows, sem exigir a instalação do pacote completo do NDI Tools na máquina de origem.
 
 > **Versão atual: 0.4.0 Beta**
 
-[Baixar a versão mais recente](https://github.com/zosmalabs/transmissor-ndi-portatil/releases/latest) · [Projetos da 1Byte Labs](https://github.com/zosmalabs)
+[Baixar a versão mais recente](https://github.com/1bytelabs/transmissor-ndi-portatil/releases/latest) · [Projetos da 1Byte Labs](https://github.com/1bytelabs)
 
 ## Principais recursos
 
@@ -30,9 +32,9 @@ Aplicativo da [1Byte Labs](https://github.com/zosmalabs) para transmitir vídeo 
 
 Na interface compacta, a opção **Enviar áudio** vem marcada por padrão. Ao desmarcá-la antes de iniciar, somente a imagem é transmitida.
 
-## 1Byte Labs Receiver
+## Zosma Receiver
 
-A versão 0.4.0 Beta também inclui o **1Byte Labs Receiver 0.1 Beta**, um receptor portátil para visualizar a fonte NDI sem instalar o NDI Tools.
+A versão 0.4.0 Beta também inclui o **Zosma Receiver 0.1 Beta**, um receptor portátil para visualizar a fonte NDI sem instalar o NDI Tools.
 
 - descoberta automática das fontes NDI na rede local;
 - recepção de vídeo e áudio;
@@ -90,7 +92,7 @@ cmake --build build --config Release
 
 **Ideias transformadas em software.**
 
-[github.com/zosmalabs](https://github.com/zosmalabs)
+[github.com/1bytelabs](https://github.com/1bytelabs)
 
 ## NDI®
 
@@ -103,3 +105,7 @@ NDI® é uma marca registrada da Vizrt NDI AB. Os avisos aplicáveis aos compone
 ## Licença
 
 Nenhuma licença foi definida para o código do projeto nesta fase Beta. Consulte também `THIRD_PARTY_NOTICES.md` para os componentes de terceiros.
+
+## Contato — 1Byte Labs
+
+[1bytelabs.com.br](https://1bytelabs.com.br) · [contato@1bytelabs.com.br](mailto:contato@1bytelabs.com.br)

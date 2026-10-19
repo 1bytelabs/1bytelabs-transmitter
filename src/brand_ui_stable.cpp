@@ -353,7 +353,7 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_COMMAND:
         if (LOWORD(wp) == kIdSite) {
-            ShellExecuteW(hwnd, L"open", L"https://github.com/zosmalabs", nullptr, nullptr, SW_SHOWNORMAL);
+            ShellExecuteW(hwnd, L"open", L"https://1bytelabs.com.br", nullptr, nullptr, SW_SHOWNORMAL);
             return 0;
         }
         if (LOWORD(wp) == kIdLicenses) { showLicenseNotice(hwnd); return 0; }
@@ -403,7 +403,7 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (smallFont) SelectObject(dc, smallFont);
         SetTextColor(dc, kMuted);
         r = {48, 178, 530, 208};
-        DrawTextW(dc, L"github.com/zosmalabs", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"1bytelabs.com.br", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
         if (bold) SelectObject(dc, bold);
         SetTextColor(dc, kText);
