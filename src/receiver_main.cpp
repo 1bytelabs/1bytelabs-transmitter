@@ -610,7 +610,7 @@ void connectReceiver() {
     settings.color_format = NDIlib_recv_color_format_BGRX_BGRA;
     settings.bandwidth = NDIlib_recv_bandwidth_highest;
     settings.allow_video_fields = false;
-    settings.p_ndi_recv_name = "Zosma Receiver";
+    settings.p_ndi_recv_name = "1Byte Labs Receiver";
 
     g.receiver = g.ndi->recv_create_v3(&settings);
     if (!g.receiver) {
@@ -690,7 +690,7 @@ void toggleOutput() {
     const int selection = static_cast<int>(SendMessageW(g.monitors, CB_GETCURSEL, 0, 0));
     if (selection < 0 || selection >= static_cast<int>(g.monitorList.size())) return;
     const RECT bounds = g.monitorList[selection].bounds;
-    g.output = CreateWindowExW(WS_EX_TOPMOST, kOutputClass, L"Zosma Receiver — Telão",
+    g.output = CreateWindowExW(WS_EX_TOPMOST, kOutputClass, L"1Byte Labs Receiver — Telão",
                                WS_POPUP | WS_VISIBLE, bounds.left, bounds.top,
                                bounds.right - bounds.left, bounds.bottom - bounds.top,
                                nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -1102,7 +1102,7 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         SetTextColor(dc, kText);
         SelectObject(dc, gFontTitle);
         RECT title{24, 18, client.right - 24, 52};
-        DrawTextW(dc, L"Zosma Receiver", -1, &title, DT_LEFT | DT_SINGLELINE);
+        DrawTextW(dc, L"1Byte Labs Receiver", -1, &title, DT_LEFT | DT_SINGLELINE);
         SetTextColor(dc, kAccent);
         SelectObject(dc, gFontSmall);
         RECT beta{24, 49, client.right - 24, 70};
@@ -1171,11 +1171,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 
     std::wstring error;
     if (!loadNdi(error)) {
-        MessageBoxW(nullptr, error.c_str(), L"Zosma Receiver", MB_OK | MB_ICONERROR);
+        MessageBoxW(nullptr, error.c_str(), L"1Byte Labs Receiver", MB_OK | MB_ICONERROR);
         return 2;
     }
 
-    HWND window = CreateWindowExW(0, kWindowClass, L"Zosma Receiver 0.1 Beta",
+    HWND window = CreateWindowExW(0, kWindowClass, L"1Byte Labs Receiver 0.1 Beta",
                                   WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                                   CW_USEDEFAULT, CW_USEDEFAULT, 1040, 700,
                                   nullptr, nullptr, instance, nullptr);

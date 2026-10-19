@@ -1,15 +1,15 @@
-ZOSMA RECEIVER 0.1 BETA — PORTÁTIL PARA WINDOWS
-ZOSMA LABS — https://zosma.com.br
+1BYTE LABS RECEIVER 0.1 BETA — PORTÁTIL PARA WINDOWS
+1BYTE LABS — https://github.com/zosmalabs
 
-O Zosma Receiver recebe vídeo e áudio enviados pelo Zosma Transmitter na rede
+O 1Byte Labs Receiver recebe vídeo e áudio enviados pelo 1Byte Labs Transmitter na rede
 local e oferece uma saída limpa em tela cheia para monitor ou telão.
 
 COMO TESTAR
 
 1. Extraia todo o conteúdo do ZIP para uma pasta.
-2. Mantenha "Zosma Receiver.exe" e "Processing.NDI.Lib.x64.dll" juntos.
-3. No primeiro computador, abra o Zosma Transmitter e inicie a transmissão.
-4. No segundo computador, abra "Zosma Receiver.exe".
+2. Mantenha "1Byte Labs Receiver.exe" e "Processing.NDI.Lib.x64.dll" juntos.
+3. No primeiro computador, abra o 1Byte Labs Transmitter e inicie a transmissão.
+4. No segundo computador, abra "1Byte Labs Receiver.exe".
 5. Aguarde a fonte aparecer na lista. Se necessário, clique em "Atualizar".
 6. Selecione a fonte e clique em "Conectar".
 7. Se o Transmitter estiver no modo protegido, clique em "Liberar transmissão"

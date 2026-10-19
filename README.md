@@ -1,12 +1,12 @@
-# Zosma Transmitter
+# 1Byte Labs Transmitter
 
 **Transmissão NDI portátil com foco em simplicidade, controle e privacidade.**
 
-Aplicativo da [Zosma Labs](https://zosma.com.br) para transmitir vídeo e áudio pela rede local via NDI® no Windows, sem exigir a instalação do pacote completo do NDI Tools na máquina de origem.
+Aplicativo da [1Byte Labs](https://github.com/zosmalabs) para transmitir vídeo e áudio pela rede local via NDI® no Windows, sem exigir a instalação do pacote completo do NDI Tools na máquina de origem.
 
 > **Versão atual: 0.4.0 Beta**
 
-[Baixar a versão mais recente](https://github.com/zosmalabs/transmissor-ndi-portatil/releases/latest) · [Site da Zosma](https://zosma.com.br)
+[Baixar a versão mais recente](https://github.com/zosmalabs/transmissor-ndi-portatil/releases/latest) · [Projetos da 1Byte Labs](https://github.com/zosmalabs)
 
 ## Principais recursos
 
@@ -30,9 +30,9 @@ Aplicativo da [Zosma Labs](https://zosma.com.br) para transmitir vídeo e áudio
 
 Na interface compacta, a opção **Enviar áudio** vem marcada por padrão. Ao desmarcá-la antes de iniciar, somente a imagem é transmitida.
 
-## Zosma Receiver
+## 1Byte Labs Receiver
 
-A versão 0.4.0 Beta também inclui o **Zosma Receiver 0.1 Beta**, um receptor portátil para visualizar a fonte NDI sem instalar o NDI Tools.
+A versão 0.4.0 Beta também inclui o **1Byte Labs Receiver 0.1 Beta**, um receptor portátil para visualizar a fonte NDI sem instalar o NDI Tools.
 
 - descoberta automática das fontes NDI na rede local;
 - recepção de vídeo e áudio;
@@ -55,7 +55,7 @@ A captura é transmitida imediatamente, indicada para situações em que a rede 
 
 ## Privacidade
 
-O Zosma Transmitter possui proteção para qualquer variante identificada do WhatsApp e do Telegram. Quando conteúdo protegido é detectado na área efetivamente transmitida, a imagem é substituída por uma tela de privacidade sem encerrar a fonte NDI.
+O 1Byte Labs Transmitter possui proteção para qualquer variante identificada do WhatsApp e do Telegram. Quando conteúdo protegido é detectado na área efetivamente transmitida, a imagem é substituída por uma tela de privacidade sem encerrar a fonte NDI.
 
 As permissões para transmitir esses aplicativos são temporárias e não permanecem autorizadas após reiniciar o programa.
 
@@ -65,7 +65,7 @@ As notificações do Windows não são ocultadas; para apresentações e transmi
 
 Esta é uma versão Beta. Apesar dos testes realizados, ainda podem existir incompatibilidades com determinadas configurações de hardware, drivers, interfaces de áudio, redes ou softwares receptores. Feedback e relatos de problemas são bem-vindos.
 
-Atualmente o Zosma Transmitter está disponível para **Windows**. Versões para macOS e Linux não fazem parte desta release.
+Atualmente o 1Byte Labs Transmitter está disponível para **Windows**. Versões para macOS e Linux não fazem parte desta release.
 
 ## Compilação automática
 
@@ -86,17 +86,17 @@ cmake -S . -B build -A x64
 cmake --build build --config Release
 ```
 
-## Zosma Labs
+## 1Byte Labs
 
 **Ideias transformadas em software.**
 
-[zosma.com.br](https://zosma.com.br)
+[github.com/zosmalabs](https://github.com/zosmalabs)
 
 ## NDI®
 
-O Zosma Transmitter utiliza tecnologia **NDI®** para transmissão de vídeo e áudio em rede.
+O 1Byte Labs Transmitter utiliza tecnologia **NDI®** para transmissão de vídeo e áudio em rede.
 
-**Zosma Transmitter é um software independente e não é afiliado, patrocinado, certificado ou desenvolvido pela Vizrt NDI AB.**
+**1Byte Labs Transmitter é um software independente e não é afiliado, patrocinado, certificado ou desenvolvido pela Vizrt NDI AB.**
 
 NDI® é uma marca registrada da Vizrt NDI AB. Os avisos aplicáveis aos componentes de terceiros acompanham o pacote do aplicativo.
 

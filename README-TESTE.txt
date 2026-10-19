@@ -1,5 +1,5 @@
 TRANSMISSOR NDI® PORTÁTIL — TESTE PARA WINDOWS
-ZOSMA LABS — https://zosma.com.br
+1BYTE LABS — https://github.com/zosmalabs
 
 Este é um protótipo para teste em Windows 10 ou 11 de 64 bits.
 

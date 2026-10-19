@@ -109,9 +109,9 @@ if(MSVC)
 endif()
 
 set_target_properties(zosma-transmitter PROPERTIES
-  OUTPUT_NAME "Zosma Transmitter"
+  OUTPUT_NAME "1Byte Labs Transmitter"
 )
 
 set_target_properties(zosma-receiver PROPERTIES
-  OUTPUT_NAME "Zosma Receiver"
+  OUTPUT_NAME "1Byte Labs Receiver"
 )
