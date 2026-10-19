@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(OneByteLabsTransmitter VERSION 0.4.0 LANGUAGES CXX)
+project(OneByteLabsTransmitter VERSION 0.4.1 LANGUAGES CXX)
 
 if(NOT WIN32)
   message(FATAL_ERROR "Este aplicativo suporta Windows 10/11 x64.")
