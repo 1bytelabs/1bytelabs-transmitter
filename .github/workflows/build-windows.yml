@@ -33,7 +33,7 @@ jobs:
           $packagePath = "$env:RUNNER_TEMP\zosma-v0.3.1.zip"
           $ndiRuntimeDir = "$env:RUNNER_TEMP\ndi-runtime"
           Invoke-WebRequest `
-            -Uri "https://github.com/zosmalabs/zosma-transmitter/releases/download/v0.3.1-beta/Zosma-Transmitter-v0.3.1-beta-Windows-x64.zip" `
+            -Uri "https://github.com/1bytelabs/1bytelabs-transmitter/releases/download/v0.3.1-beta/Zosma-Transmitter-v0.3.1-beta-Windows-x64.zip" `
             -OutFile $packagePath
           Expand-Archive -Path $packagePath -DestinationPath $ndiRuntimeDir -Force
 

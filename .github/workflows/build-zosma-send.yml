@@ -31,7 +31,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'VST3 validator falhou' }
           # Same redistributable source as the existing Transmitter build.
           $runtimeZip = Join-Path $env:RUNNER_TEMP 'zosma-runtime.zip'
-          Invoke-WebRequest 'https://github.com/1bytelabs/zosma-transmitter/releases/download/v0.3.1-beta/Zosma-Transmitter-v0.3.1-beta-Windows-x64.zip' -OutFile $runtimeZip
+          Invoke-WebRequest 'https://github.com/1bytelabs/1bytelabs-transmitter/releases/download/v0.3.1-beta/Zosma-Transmitter-v0.3.1-beta-Windows-x64.zip' -OutFile $runtimeZip
           $runtimeDir = Join-Path $env:RUNNER_TEMP 'zosma-runtime'
           Expand-Archive $runtimeZip $runtimeDir -Force
           $dll = Get-ChildItem $runtimeDir -Filter Processing.NDI.Lib.x64.dll -Recurse | Select-Object -First 1
