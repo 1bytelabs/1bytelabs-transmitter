@@ -13,7 +13,7 @@ if(ZOSMA_QUEUE_TESTS_ONLY)
     return()
 endif()
 if(NOT WIN32 OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-    message(FATAL_ERROR "Zosma Send prototype requires Windows x64")
+    message(FATAL_ERROR "1Byte Labs Send prototype requires Windows x64")
 endif()
 
 set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -29,7 +29,7 @@ FetchContent_Declare(vst3sdk
 )
 FetchContent_MakeAvailable(vst3sdk)
 smtg_enable_vst3_sdk()
-smtg_add_vst3plugin(zosma-send PACKAGE_NAME "Zosma Send" SOURCES_LIST
+smtg_add_vst3plugin(zosma-send PACKAGE_NAME "1Byte Labs Send" SOURCES_LIST
     plugin.cpp ndi_audio.cpp editor.cpp
     ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/vstsinglecomponenteffect.cpp
 )

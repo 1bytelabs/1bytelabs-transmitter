@@ -1,4 +1,4 @@
-# Zosma Send 0.1.1 — protótipo VST3
+# 1Byte Labs Send 0.1.1 — protótipo VST3
 
 Plugin experimental para Windows x64: recebe o áudio estéreo do REAPER,
 preserva a saída local e envia uma fonte NDI de áudio, sem vídeo ou captura
@@ -7,19 +7,19 @@ Não há promessa de eliminar engasgos nem de latência mínima.
 
 ## Instalação e primeiro teste
 
-1. Baixe o ZIP do artifact **Zosma-Send-0.1.1-prototype-Windows-x64** no workflow
-   **Zosma Send VST3 - prototipo Windows** desta branch e extraia-o.
-2. Copie a pasta inteira `Zosma Send.vst3` para
+1. Baixe o ZIP do artifact **1ByteLabs-Send-0.1.1-prototype-Windows-x64** no workflow
+   **1Byte Labs Send VST3 - prototipo Windows** desta branch e extraia-o.
+2. Copie a pasta inteira `1Byte Labs Send.vst3` para
    `C:\Program Files\Common Files\VST3`. A DLL NDI deve permanecer em
-   `Zosma Send.vst3\Contents\x86_64-win`, junto ao binário.
-3. No REAPER, procure novos plugins VST3 e insira **Zosma Send** no final da
+   `1Byte Labs Send.vst3\Contents\x86_64-win`, junto ao binário.
+3. No REAPER, procure novos plugins VST3 e insira **1Byte Labs Send** no final da
    cadeia de efeitos do master, depois dos efeitos usados na mixagem.
-4. Na interface do Zosma escolha **Numero da fonte** (1–16) e clique em
-   **Ligar envio**. O nome na rede será `Zosma Send 01`, por exemplo, com o
+4. Na interface do 1Byte Labs Send escolha **Numero da fonte** (1–16) e clique em
+   **Ligar envio**. O nome na rede será `1Byte Labs Send 01`, por exemplo, com o
    prefixo do computador acrescentado pelo NDI.
 5. No OBS da outra máquina, use a entrada NDI que você já utiliza e selecione
    essa fonte. Desative o envio antigo durante a comparação para evitar duplicação.
-6. Teste também no Zosma Receiver para separar problemas do envio e da recepção.
+6. Teste também no 1Byte Labs Receiver para separar problemas do envio e da recepção.
 
 O REAPER precisa estar processando áudio. Se necessário, habilite seu
 processamento de efeitos com o transporte parado. O plugin não transmite
@@ -91,5 +91,13 @@ ctest --test-dir build-queue --output-on-failure
 ```
 
 O SDK VST3 tem seus próprios termos no arquivo incluído no pacote;
-os avisos NDI acompanham o artifact. A licença do código Zosma continua
+os avisos NDI acompanham o artifact. A licença do código 1Byte Labs continua
 conforme o README principal. Este plugin não é afiliado à Steinberg ou à NDI.
+
+## Atualização de marca
+
+O nome agora é **1Byte Labs Send**. O identificador VST3 e os parâmetros
+foram preservados para compatibilidade com projetos existentes. Ao atualizar,
+remova a pasta antiga `Zosma Send.vst3` antes de instalar `1Byte Labs Send.vst3`,
+para evitar duas cópias com o mesmo identificador. Faça uma nova varredura no
+REAPER e selecione a fonte `1Byte Labs Send 01` (ou o número configurado) no OBS.
