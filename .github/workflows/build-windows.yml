@@ -33,7 +33,7 @@ jobs:
           $packagePath = "$env:RUNNER_TEMP\zosma-v0.3.1.zip"
           $ndiRuntimeDir = "$env:RUNNER_TEMP\ndi-runtime"
           Invoke-WebRequest `
-            -Uri "https://github.com/zosmalabs/zosma-transmitter/releases/download/v0.3.1-beta/Zosma-Transmitter-v0.3.1-beta-Windows-x64.zip" `
+            -Uri "https://github.com/1bytelabs/zosma-transmitter/releases/download/v0.3.1-beta/Zosma-Transmitter-v0.3.1-beta-Windows-x64.zip" `
             -OutFile $packagePath
           Expand-Archive -Path $packagePath -DestinationPath $ndiRuntimeDir -Force
 
@@ -44,12 +44,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist-receiver | Out-Null
 
           Copy-Item `
-            "build\Release\Zosma Transmitter.exe" `
-            "dist-transmitter\Zosma Transmitter.exe"
+            "build\Release\1Byte Labs Transmitter.exe" `
+            "dist-transmitter\1Byte Labs Transmitter.exe"
 
           Copy-Item `
-            "build\Release\Zosma Receiver.exe" `
-            "dist-receiver\Zosma Receiver.exe"
+            "build\Release\1Byte Labs Receiver.exe" `
+            "dist-receiver\1Byte Labs Receiver.exe"
 
           $ndiDll = Get-ChildItem `
             -Path "$env:RUNNER_TEMP\ndi-runtime" `
@@ -78,7 +78,7 @@ jobs:
       - name: Publicar artifact de teste
         uses: actions/upload-artifact@v4
         with:
-          name: Zosma-Transmitter-Windows-x64
+          name: 1ByteLabs-Transmitter-Windows-x64
           path: dist-transmitter/*
           if-no-files-found: error
           retention-days: 30
@@ -86,7 +86,7 @@ jobs:
       - name: Publicar artifact de teste do Receiver
         uses: actions/upload-artifact@v4
         with:
-          name: Zosma-Receiver-Windows-x64
+          name: 1ByteLabs-Receiver-Windows-x64
           path: dist-receiver/*
           if-no-files-found: error
           retention-days: 30
@@ -97,12 +97,12 @@ jobs:
         run: |
           Compress-Archive `
             -Path "dist-transmitter\*" `
-            -DestinationPath "Zosma-Transmitter-${{ github.ref_name }}-Windows-x64.zip" `
+            -DestinationPath "1ByteLabs-Transmitter-${{ github.ref_name }}-Windows-x64.zip" `
             -Force
 
           Compress-Archive `
             -Path "dist-receiver\*" `
-            -DestinationPath "Zosma-Receiver-${{ github.ref_name }}-Windows-x64.zip" `
+            -DestinationPath "1ByteLabs-Receiver-${{ github.ref_name }}-Windows-x64.zip" `
             -Force
 
       - name: Anexar pacote à release
@@ -112,8 +112,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ github.ref_name }}"
-          $transmitterAsset = "Zosma-Transmitter-$tag-Windows-x64.zip"
-          $receiverAsset = "Zosma-Receiver-$tag-Windows-x64.zip"
+          $transmitterAsset = "1ByteLabs-Transmitter-$tag-Windows-x64.zip"
+          $receiverAsset = "1ByteLabs-Receiver-$tag-Windows-x64.zip"
 
           for ($attempt = 1; $attempt -le 12; $attempt++) {
             gh release view $tag --repo "${{ github.repository }}" 2>$null

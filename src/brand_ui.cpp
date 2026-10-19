@@ -8,7 +8,7 @@
 
 namespace {
 constexpr wchar_t kMainClass[] = L"TransmissorNDIPortatilV3";
-constexpr wchar_t kAboutClass[] = L"ZosmaTransmitterAboutV1";
+constexpr wchar_t kAboutClass[] = L"OneByteLabsTransmitterAboutV1";
 constexpr UINT_PTR kStyleTimer = 93;
 constexpr int kIdAbout = 1501;
 constexpr int kIdSite = 1502;
@@ -207,17 +207,17 @@ LRESULT CALLBACK buttonProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR,
 }
 
 void styleOne(HWND child) {
-    if (!child || GetPropW(child, L"ZosmaPremium")) return;
+    if (!child || GetPropW(child, L"OneByteLabsPremium")) return;
     wchar_t cls[64]{};
     GetClassNameW(child, cls, static_cast<int>(std::size(cls)));
     if (_wcsicmp(cls, L"Button") == 0) {
         SetWindowSubclass(child, buttonProc, 71, 0);
         roundControl(child, 12);
-        SetPropW(child, L"ZosmaPremium", reinterpret_cast<HANDLE>(1));
+        SetPropW(child, L"OneByteLabsPremium", reinterpret_cast<HANDLE>(1));
         InvalidateRect(child, nullptr, TRUE);
     } else if (_wcsicmp(cls, L"Edit") == 0 || _wcsicmp(cls, WC_COMBOBOXW) == 0) {
         roundControl(child, 10);
-        SetPropW(child, L"ZosmaPremium", reinterpret_cast<HANDLE>(1));
+        SetPropW(child, L"OneByteLabsPremium", reinterpret_cast<HANDLE>(1));
     }
 }
 
@@ -244,11 +244,11 @@ void paintHeader(HWND hwnd) {
     HGDIOBJ oldFont = title ? SelectObject(dc, title) : nullptr;
     SetTextColor(dc, kText);
     RECT r{28, 18, 570, 48};
-    DrawTextW(dc, L"Zosma Transmitter", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    DrawTextW(dc, L"1Byte Labs Transmitter", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     if (sub) SelectObject(dc, sub);
     SetTextColor(dc, kMuted);
     r = {28, 48, 570, 69};
-    DrawTextW(dc, L"Uma solução Zosma Labs", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    DrawTextW(dc, L"Uma solução 1Byte Labs", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     if (oldFont) SelectObject(dc, oldFont);
     if (title) DeleteObject(title);
     if (sub) DeleteObject(sub);
@@ -257,8 +257,8 @@ void paintHeader(HWND hwnd) {
 
 void showLicenseNotice(HWND owner) {
     MessageBoxW(owner,
-        L"Zosma Transmitter utiliza tecnologia NDI® para transmissão de vídeo e áudio em rede.\n\n"
-        L"Zosma Transmitter é um software independente e não é afiliado, patrocinado, certificado ou desenvolvido pela Vizrt NDI AB.\n\n"
+        L"1Byte Labs Transmitter utiliza tecnologia NDI® para transmissão de vídeo e áudio em rede.\n\n"
+        L"1Byte Labs Transmitter é um software independente e não é afiliado, patrocinado, certificado ou desenvolvido pela Vizrt NDI AB.\n\n"
         L"NDI® é uma marca registrada da Vizrt NDI AB.\n\n"
         L"Os avisos aplicáveis aos componentes de terceiros também acompanham o aplicativo no arquivo AVISOS-DE-TERCEIROS.txt.",
         L"Licenças e componentes de terceiros", MB_OK | MB_ICONINFORMATION);
@@ -270,7 +270,7 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         BOOL dark = TRUE;
         DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
         HFONT font = makeFont(15, FW_SEMIBOLD);
-        HWND site = CreateWindowExW(0, L"BUTTON", L"zosma.com.br", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        HWND site = CreateWindowExW(0, L"BUTTON", L"Visitar site", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             28, 382, 170, 38, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdSite)), GetModuleHandleW(nullptr), nullptr);
         HWND licenses = CreateWindowExW(0, L"BUTTON", L"Licenças e componentes", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             210, 382, 210, 38, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdLicenses)), GetModuleHandleW(nullptr), nullptr);
@@ -287,7 +287,7 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_COMMAND:
         if (LOWORD(wp) == kIdSite) {
-            ShellExecuteW(hwnd, L"open", L"https://zosma.com.br", nullptr, nullptr, SW_SHOWNORMAL);
+            ShellExecuteW(hwnd, L"open", L"https://1bytelabs.com.br", nullptr, nullptr, SW_SHOWNORMAL);
             return 0;
         }
         if (LOWORD(wp) == kIdLicenses) {
@@ -316,11 +316,11 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         HGDIOBJ oldFont = title ? SelectObject(dc, title) : nullptr;
         SetTextColor(dc, kText);
         RECT r{28, 24, 552, 58};
-        DrawTextW(dc, L"Zosma Transmitter", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"1Byte Labs Transmitter", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         if (body) SelectObject(dc, body);
         SetTextColor(dc, kMuted);
         r = {28, 60, 552, 84};
-        DrawTextW(dc, L"Uma solução Zosma Labs  ·  Versão 0.3.0 Beta", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"Uma solução 1Byte Labs  ·  Versão 0.3.0 Beta", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
         HBRUSH panel = CreateSolidBrush(kPanel);
         HPEN pen = CreatePen(PS_SOLID, 1, kBorder);
@@ -335,7 +335,7 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (bold) SelectObject(dc, bold);
         SetTextColor(dc, kText);
         r = {48, 120, 530, 146};
-        DrawTextW(dc, L"Zosma Labs", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"1Byte Labs", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         if (body) SelectObject(dc, body);
         SetTextColor(dc, RGB(199, 220, 247));
         r = {48, 146, 530, 174};
@@ -343,7 +343,7 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (smallFont) SelectObject(dc, smallFont);
         SetTextColor(dc, kMuted);
         r = {48, 178, 530, 208};
-        DrawTextW(dc, L"zosma.com.br", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"1bytelabs.com.br  ·  contato@1bytelabs.com.br", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
         if (bold) SelectObject(dc, bold);
         SetTextColor(dc, kText);
@@ -353,7 +353,7 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SetTextColor(dc, kMuted);
         r = {28, 270, 552, 352};
         DrawTextW(dc,
-            L"Zosma Transmitter utiliza tecnologia NDI® para transmissão de vídeo e áudio em rede.\n\n"
+            L"1Byte Labs Transmitter utiliza tecnologia NDI® para transmissão de vídeo e áudio em rede.\n\n"
             L"É um software independente e não é afiliado, patrocinado, certificado ou desenvolvido pela Vizrt NDI AB. NDI® é uma marca registrada da Vizrt NDI AB.",
             -1, &r, DT_LEFT | DT_WORDBREAK);
 
@@ -396,7 +396,7 @@ void showAbout() {
     const int height = 486;
     const int x = owner.left + ((owner.right - owner.left) - width) / 2;
     const int y = owner.top + ((owner.bottom - owner.top) - height) / 2;
-    gAbout = CreateWindowExW(WS_EX_DLGMODALFRAME, kAboutClass, L"Sobre — Zosma Transmitter",
+    gAbout = CreateWindowExW(WS_EX_DLGMODALFRAME, kAboutClass, L"Sobre — 1Byte Labs Transmitter",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, x, y, width, height,
         gMain, nullptr, instance, nullptr);
     if (gAbout) ShowWindow(gAbout, SW_SHOW);
@@ -427,7 +427,7 @@ LRESULT CALLBACK mainProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, D
 void install(HWND hwnd) {
     if (gMain || !hwnd) return;
     gMain = hwnd;
-    SetWindowTextW(hwnd, L"Zosma Transmitter — V3");
+    SetWindowTextW(hwnd, L"1Byte Labs Transmitter — V3");
     HFONT font = makeFont(15, FW_SEMIBOLD);
     HWND about = CreateWindowExW(0, L"BUTTON", L"Sobre", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
         708, 18, 120, 34, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIdAbout)), GetModuleHandleW(nullptr), nullptr);

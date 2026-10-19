@@ -27,7 +27,7 @@ struct CaptureSource {
 };
 
 struct AppSettings {
-    std::wstring sourceName{L"Zosma Transmitter"};
+    std::wstring sourceName{L"1Byte Labs Transmitter"};
     CaptureKind captureKind{CaptureKind::Monitor};
     int sourceIndex{0};
     int resolutionIndex{0};

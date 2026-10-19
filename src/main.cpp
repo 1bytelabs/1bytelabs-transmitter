@@ -879,11 +879,11 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         HICON appIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(1));
         if (appIcon) DrawIconEx(dc, 28, 17, appIcon, 42, 42, 0, nullptr, DI_NORMAL);
         RECT title{82, 16, 450, 46};
-        DrawTextW(dc, L"Zosma Transmitter", -1, &title, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"1Byte Labs Transmitter", -1, &title, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         SelectObject(dc, gFontSmall);
         SetTextColor(dc, kMuted);
         RECT sub{82, 46, 450, 67};
-        DrawTextW(dc, L"Uma solução Zosma Labs", -1, &sub, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"Uma solução 1Byte Labs", -1, &sub, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
         drawPanel(dc, {20, 78, 924, 138});
         drawSmallText(dc, 32, 84, L"Transmissão", 180);
