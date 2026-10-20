@@ -755,7 +755,7 @@ void drawSmallText(HDC dc, int x, int y, const wchar_t* text, int width = 300) {
 
 void createUi() {
     addControl(L"BUTTON", L"Configurar tela virtual", BS_PUSHBUTTON,
-        32, 588, 240, 32, 1400, gFont);
+        284, 246, 214, 26, 1400, gFontSmall);
     g.help = addControl(L"BUTTON", L"?  Como usar", BS_PUSHBUTTON, 806, 20, 116, 38, IdHelp, gFont);
     g.start = addControl(L"BUTTON", L"Iniciar transmissão", BS_DEFPUSHBUTTON, 476, 18, 190, 42, IdStart, gFontBold);
     g.sourceName = addControl(L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL, 32, 208, 466, 34, IdSourceName, gFont);
@@ -856,23 +856,43 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (id == IdCaptureKind && HIWORD(wp) == CBN_SELCHANGE) refreshSources();
         else if (id == IdCaptureSource && HIWORD(wp) == CBN_SELCHANGE) updatePreview();
         else if (id == 1400 && !g.running.load()) {
+            const auto monitors = enumerateMonitors();
+            const bool detected = std::any_of(monitors.begin(), monitors.end(),
+                [](const MonitorSource& monitor) { return monitor.virtualDisplay; });
             const int choice = MessageBoxW(hwnd,
-                L"Este recurso usa o Virtual Display Driver (open source, licença MIT).\n\n"
-                L"1. Baixe o utilitário oficial Virtual Driver Control e instale o driver x64 como administrador.\n"
-                L"2. Nas configurações de Tela do Windows, use Estender e mantenha a tela física como principal.\n"
-                L"3. Configure a tela virtual em 1920 × 1080 para o primeiro teste.\n"
-                L"4. Volte ao Transmitter, escolha Tela virtual e clique em Atualizar (↻).\n\n"
-                L"Use Win + Shift + seta para mover janelas entre as telas.\n"
-                L"A prévia permite acompanhar a imagem; controle as janelas pelos atalhos do Windows.\n\n"
-                L"Sim: abrir download oficial. Não: abrir configurações de Tela. Cancelar: voltar.",
-                L"Configurar tela virtual — versão de teste", MB_YESNOCANCEL | MB_ICONINFORMATION);
-            const wchar_t* destination = choice == IDYES ?
-                L"https://github.com/VirtualDrivers/Virtual-Display-Driver/releases" :
-                choice == IDNO ? L"ms-settings:display" : nullptr;
-            if (destination && reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd, L"open", destination,
-                    nullptr, nullptr, SW_SHOWNORMAL)) <= 32)
-                MessageBoxW(hwnd, L"Não foi possível abrir o destino. Consulte o guia TELA-VIRTUAL.md.",
-                    L"Tela virtual", MB_OK | MB_ICONWARNING);
+                detected ?
+                L"A tela virtual já está disponível.\n\n"
+                L"Sim: abrir as configurações de Tela do Windows para ajustar resolução e modo Estender.\n"
+                L"Não: abrir o utilitário oficial para gerenciar o driver.\n"
+                L"Cancelar: voltar." :
+                L"O pacote inclui o Virtual Driver Control original e o driver de vídeo assinado.\n\n"
+                L"Sim: abrir o utilitário como administrador. Nele, use Install Driver na seção de vídeo. "
+                L"Não é necessário instalar o driver de áudio.\n"
+                L"Não: abrir as configurações de Tela do Windows.\n"
+                L"Cancelar: voltar.\n\n"
+                L"Após instalar, use Estender, mantenha sua tela física como principal e atualize as fontes (↻).",
+                L"Configurar tela virtual", MB_YESNOCANCEL | MB_ICONINFORMATION);
+            if (choice != IDCANCEL) {
+                const bool openControl = detected ? choice == IDNO : choice == IDYES;
+                const auto control = executableDirectory() / L"virtual-display" / L"VDD Control.exe";
+                std::error_code error;
+                if (openControl && !std::filesystem::is_regular_file(control, error)) {
+                    MessageBoxW(hwnd,
+                        L"O utilitário não foi encontrado. Extraia todo o pacote do Transmitter, "
+                        L"incluindo a pasta virtual-display, e tente novamente.",
+                        L"Tela virtual", MB_OK | MB_ICONWARNING);
+                } else {
+                    const auto directory = control.parent_path();
+                    const INT_PTR result = reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd,
+                        openControl ? L"runas" : L"open",
+                        openControl ? control.c_str() : L"ms-settings:display", nullptr,
+                        openControl ? directory.c_str() : nullptr, SW_SHOWNORMAL));
+                    if (result <= 32)
+                        MessageBoxW(hwnd,
+                            L"O utilitário não foi aberto ou a autorização foi cancelada. Consulte TELA-VIRTUAL.md.",
+                            L"Tela virtual", MB_OK | MB_ICONWARNING);
+                }
+            }
         }
         else if (id == IdRefresh) refreshSources();
         else if (id == IdStart) {

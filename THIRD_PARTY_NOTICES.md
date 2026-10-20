@@ -18,3 +18,16 @@ Fonte utilizada para os cabeçalhos públicos:
 
 https://github.com/DistroAV/DistroAV/tree/master/lib/ndi
 
+
+## Virtual Display Driver / Virtual Driver Control
+
+O pacote do Transmitter inclui a distribuição original Virtual Driver Control
+25.7.23 do projeto VirtualDrivers / Virtual Display Driver, com drivers assinados.
+Os componentes não foram renomeados, recompilados nem modificados.
+
+Projeto e código-fonte: https://github.com/VirtualDrivers/Virtual-Display-Driver
+Distribuição: https://github.com/VirtualDrivers/Virtual-Display-Driver/releases/tag/25.7.23
+
+Copyright (c) 2024 Virtual Display. Licença MIT; texto integral em
+`virtual-display/LICENSE-VIRTUAL-DISPLAY.txt`, junto aos avisos originais.
+Este componente acompanha somente o Transmitter; o Receiver não o inclui.
