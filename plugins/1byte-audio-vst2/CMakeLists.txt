@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(OneByteAudioVst2 VERSION 0.2.0 LANGUAGES CXX)
+project(OneByteAudioVst2 VERSION 0.2.1 LANGUAGES CXX)
 include(CTest)
 find_package(Threads REQUIRED)
 set(SEND_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../zosma-send")
@@ -56,3 +56,19 @@ if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /utf-8 /EHsc)
     endforeach()
 endif()
+
+add_executable(vst2-diagnostic-test tests/diagnostic_test.cpp "${SEND_ROOT}/ndi_audio.cpp")
+target_include_directories(vst2-diagnostic-test PRIVATE "${SEND_ROOT}" "${NDI_HEADERS}")
+target_compile_features(vst2-diagnostic-test PRIVATE cxx_std_17)
+target_compile_definitions(vst2-diagnostic-test PRIVATE ${COMMON_DEFINITIONS})
+target_link_libraries(vst2-diagnostic-test PRIVATE avrt)
+add_dependencies(vst2-diagnostic-test mock-ndi)
+if(MSVC)
+    target_compile_options(vst2-diagnostic-test PRIVATE /W4 /utf-8 /EHsc)
+endif()
+add_test(NAME ndi-diagnostics COMMAND vst2-diagnostic-test)
+# A separate process/directory ensures no loaded runtime can hide a missing DLL.
+add_custom_command(TARGET vst2-diagnostic-test POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:vst2-diagnostic-test>/missing-runtime"
+    COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:vst2-diagnostic-test>" "$<TARGET_FILE_DIR:vst2-diagnostic-test>/missing-runtime/")
+add_test(NAME ndi-missing-runtime COMMAND "$<TARGET_FILE_DIR:vst2-diagnostic-test>/missing-runtime/vst2-diagnostic-test.exe" missing)

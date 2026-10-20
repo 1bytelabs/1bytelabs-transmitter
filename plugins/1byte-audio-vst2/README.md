@@ -1,4 +1,4 @@
-# 1Byte Labs Audio 0.2.0 — protótipo VST2 x64 (Enviar)
+# 1Byte Labs Audio 0.2.1 — protótipo VST2 x64 (Enviar)
 
 Primeira etapa da migração do Send VST3 0.1.4 para VST2. Este pacote envia
 áudio estéreo por NDI. **O modo Receber ainda não foi implementado.**
@@ -7,7 +7,7 @@ Não é um plugin nativo do OBS, não instala driver ou cabo virtual.
 ## Instalar
 
 Feche o REAPER e o OBS. Execute o instalador
-`1ByteLabs-Audio-0.2.0-VST2-Setup-x64.exe`. O destino VST2 padrão é:
+`1ByteLabs-Audio-0.2.1-VST2-Setup-x64.exe`. O destino VST2 padrão é:
 
 `C:\Program Files\VSTPlugins\1Byte Labs`
 
@@ -97,3 +97,7 @@ NDI e seus termos/avisos acompanham `AVISOS-NDI.md`. A licença do código
 afiliado à Steinberg nem à Vizrt NDI AB.
 
 [1bytelabs.com.br](https://1bytelabs.com.br)
+
+## Diagnostico 0.2.1
+
+O botao **Diagnostico NDI** exibe o executavel do host, caminho da DLL, etapa de falha e codigo Windows quando disponivel. Na janela de mensagem, Ctrl+C copia o relatorio completo. O runtime continua incluido no instalador; esta versao nao altera a fila, o ganho ou o processamento de audio.

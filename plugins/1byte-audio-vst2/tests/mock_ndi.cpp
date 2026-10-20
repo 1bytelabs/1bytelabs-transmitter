@@ -5,11 +5,13 @@
 #include <cmath>
 
 namespace {
+std::atomic_int failure{0};
 std::atomic_int frames{0},lastRate{0},senders{0};
 std::atomic<float> leftPeak{0},rightPeak{0};
-bool initialize() { return true; }
+bool initialize() { return failure!=1; }
 void destroy() {}
 NDIlib_send_instance_t create(const NDIlib_send_create_t*) {
+    if(failure==2) return nullptr;
     ++senders;return reinterpret_cast<NDIlib_send_instance_t>(new int(1));
 }
 void close(NDIlib_send_instance_t sender) { delete reinterpret_cast<int*>(sender);--senders; }
@@ -38,3 +40,5 @@ extern "C" __declspec(dllexport) int TestSampleRate() { return lastRate.load(); 
 extern "C" __declspec(dllexport) int TestSenderCount() { return senders.load(); }
 extern "C" __declspec(dllexport) float TestLeftPeak() { return leftPeak.load(); }
 extern "C" __declspec(dllexport) float TestRightPeak() { return rightPeak.load(); }
+
+extern "C" __declspec(dllexport) void TestFailure(int mode) { failure=mode; }

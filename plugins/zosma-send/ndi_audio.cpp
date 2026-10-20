@@ -18,24 +18,51 @@ struct Runtime {
     HMODULE module{};
     const NDIlib_v6* api{};
     unsigned references{};
-    const NDIlib_v6* acquire() {
+    const NDIlib_v6* acquire(std::wstring& report) {
         std::lock_guard lock(mutex);
-        if (api) { ++references; return api; }
+        if (api) { ++references; report=L"Runtime NDI ja inicializado por outra instancia."; return api; }
+        auto fail=[&](const wchar_t* stage,DWORD code,const std::wstring& path) {
+            wchar_t message[1024]{};
+            if(code) FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS,
+                nullptr,code,0,message,1024,nullptr);
+            report=std::wstring(stage)+L"\r\nCodigo Windows: "+std::to_wstring(code)+
+                L"\r\n"+message+L"\r\nDLL: "+path;
+        };
         HMODULE own{};
         if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                 GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                reinterpret_cast<LPCWSTR>(&runtimeAnchor), &own)) return nullptr;
+                reinterpret_cast<LPCWSTR>(&runtimeAnchor), &own)) {
+            fail(L"Falha ao localizar o modulo do plugin",GetLastError(),L""); return nullptr;
+        }
         wchar_t path[32768]{};
-        if (!GetModuleFileNameW(own, path, 32768)) return nullptr;
+        if (!GetModuleFileNameW(own, path, 32768)) {
+            fail(L"Falha ao obter o caminho do plugin",GetLastError(),L""); return nullptr;
+        }
         const auto dll = std::filesystem::path(path).parent_path() / L"Processing.NDI.Lib.x64.dll";
+        if(GetFileAttributesW(dll.c_str())==INVALID_FILE_ATTRIBUTES) {
+            fail(L"DLL NDI ausente ou inacessivel",GetLastError(),dll.wstring()); return nullptr;
+        }
         module = LoadLibraryExW(dll.c_str(), nullptr,
             LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
-        if (!module) return nullptr;
+        if (!module) {
+            const DWORD code=GetLastError();
+            fail(code==ERROR_MOD_NOT_FOUND ? L"DLL existe, mas uma dependencia nao foi encontrada" :
+                code==ERROR_BAD_EXE_FORMAT ? L"DLL invalida ou arquitetura incompativel (requer x64)" :
+                L"Windows recusou carregar a DLL NDI",code,dll.wstring()); return nullptr;
+        }
         const auto load = reinterpret_cast<const NDIlib_v6* (*)()>(GetProcAddress(module,"NDIlib_v6_load"));
-        api = load ? load() : nullptr;
+        if(!load) {
+            fail(L"Runtime incompativel: export NDIlib_v6_load ausente",GetLastError(),dll.wstring());
+            FreeLibrary(module); module=nullptr; return nullptr;
+        }
+        api=load();
         if (!api || !api->initialize()) {
+            fail(api ? L"NDI initialize() retornou false (sem codigo Windows)" :
+                L"NDIlib_v6_load retornou tabela nula",0,dll.wstring());
             api=nullptr; FreeLibrary(module); module=nullptr; return nullptr;
         }
+        wchar_t loaded[32768]{}; GetModuleFileNameW(module,loaded,32768);
+        report=L"Runtime NDI inicializado.\r\nDLL carregada: "+std::wstring(loaded);
         references=1; return api;
     }
     void release() {
@@ -47,6 +74,9 @@ struct Runtime {
     static void runtimeAnchor() {}
 };
 Runtime runtime;
+}
+std::wstring NdiAudio::diagnostic() const {
+    std::lock_guard lock(diagnosticMutex_); return diagnostic_;
 }
 void NdiAudio::prepare(int rate) {
     stop(); sampleRate_=rate; sampleRate=rate;
@@ -86,7 +116,11 @@ void NdiAudio::run() {
         if (!sender) {
             queue.discard();
             if (now<retryAt) { Sleep(2); continue; }
-            if (!api) api=runtime.acquire();
+            std::wstring report;
+            if (!api) {
+                api=runtime.acquire(report);
+                std::lock_guard lock(diagnosticMutex_); diagnostic_=report;
+            }
             if (api) {
                 char name[64]{};
                 std::snprintf(name,sizeof(name),"1Byte Labs Send %02d",requestedSlot);
@@ -95,6 +129,11 @@ void NdiAudio::run() {
                 create.clock_audio=false; create.clock_video=false;
                 sender=api->send_create(&create);
                 currentSlot=requestedSlot;
+                if(!sender) {
+                    std::lock_guard lock(diagnosticMutex_);
+                    if(diagnostic_.find(L"send_create")==std::wstring::npos)
+                        diagnostic_=L"Runtime inicializou, mas NDI send_create retornou nulo.\r\n"+diagnostic_;
+                }
             }
             if (!sender) { status=3; retryAt=now+2000; continue; }
             gain.reset(sendDb.load(),sampleRate_);

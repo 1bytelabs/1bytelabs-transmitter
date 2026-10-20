@@ -37,7 +37,7 @@ jobs:
           Copy-Item plugins/1byte-audio-vst2/README.md dist-vst2/LEIA-ME.md
           Copy-Item THIRD_PARTY_NOTICES.md dist-vst2/AVISOS-NDI.md
           Copy-Item build-vst2/_deps/vst2abi-src/LICENSE dist-vst2/LICENCA-ABI-VST2.txt
-          Compress-Archive dist-vst2/* 1ByteLabs-Audio-0.2.0-VST2-Windows-x64.zip -Force
+          Compress-Archive dist-vst2/* 1ByteLabs-Audio-0.2.1-VST2-Windows-x64.zip -Force
       - name: Smoke test packaged DLL with real NDI runtime
         shell: pwsh
         run: |
@@ -72,9 +72,9 @@ jobs:
       - name: Upload VST2 and installer
         uses: actions/upload-artifact@v4
         with:
-          name: 1ByteLabs-Audio-0.2.0-VST2-Windows-x64
+          name: 1ByteLabs-Audio-0.2.1-VST2-Windows-x64
           path: |
-            1ByteLabs-Audio-0.2.0-VST2-Windows-x64.zip
+            1ByteLabs-Audio-0.2.1-VST2-Windows-x64.zip
             installer-out/*.exe
           if-no-files-found: error
       - name: Upload test report and editor capture

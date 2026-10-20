@@ -14,7 +14,7 @@ namespace {
 static_assert(sizeof(vst_effect_t)==192);
 static_assert(offsetof(vst_effect_t,process_float)==120);
 static_assert(std::atomic<float>::is_always_lock_free);
-constexpr int Version=200; // 0.2.0, first VST2 send-only prototype
+constexpr int Version=201; // 0.2.1, NDI startup diagnostics
 enum Parameter : std::uint32_t { Send, Source, Status, Drops, Queued, Volume, Count };
 struct Chunk {
     std::uint32_t magic{VST_FOURCC('1','B','A','2')},version{1};
