@@ -14,13 +14,14 @@ namespace {
 static_assert(sizeof(vst_effect_t)==192);
 static_assert(offsetof(vst_effect_t,process_float)==120);
 static_assert(std::atomic<float>::is_always_lock_free);
-constexpr int Version=201; // 0.2.1, NDI startup diagnostics
-enum Parameter : std::uint32_t { Send, Source, Status, Drops, Queued, Volume, Count };
+constexpr int Version=300; // 0.3.0, Send and Receive
+enum Parameter : std::uint32_t { Send, Source, Status, Drops, Queued, Volume, Mode, Count };
 struct Chunk {
-    std::uint32_t magic{VST_FOURCC('1','B','A','2')},version{1};
+    std::uint32_t magic{VST_FOURCC('1','B','A','2')},version{2};
     std::array<float,Count> values{};
+    std::array<char,1024> source{};
 };
-static_assert(sizeof(Chunk)==32);
+static_assert(sizeof(Chunk)==1060);
 template<std::size_t N> void copyText(void* ptr,const char* text) {
     if(ptr) { std::strncpy(static_cast<char*>(ptr),text,N-1); static_cast<char*>(ptr)[N-1]=0; }
 }
@@ -54,6 +55,8 @@ private:
     std::unique_ptr<zosma::NativeEditor> editor_;
     vst_rect_t rect_{0,0,604,640};
     Chunk chunk_;
+    bool receivePrimed_{false};
+    std::uint64_t callbackEpoch_{0};
     char programName_[24]{"Send NDI"};
     static Plugin* self(vst_effect_t* effect) { return static_cast<Plugin*>(effect->effect_internal); }
     static void VST_FUNCTION_INTERFACE setParameter(vst_effect_t* effect,std::uint32_t id,float value) {
@@ -62,6 +65,7 @@ private:
         if(id==Send) p->audio.enabled=value>=.5f;
         else if(id==Source) p->audio.slot=1+static_cast<int>(std::lround(value*15));
         else if(id==Volume) p->audio.sendDb=value*66.f-60.f;
+        else if(id==Mode && p->audio.receiveMode.exchange(value>=.5f)!=(value>=.5f)) ++p->audio.receiveEpoch;
     }
     static float VST_FUNCTION_INTERFACE getParameter(vst_effect_t* effect,std::uint32_t id) {
         if(!effect) return 0;
@@ -69,10 +73,11 @@ private:
         switch(id) {
         case Send:return a.enabled.load() ? 1.f : 0.f;
         case Source:return (a.slot.load()-1)/15.f;
+        case Mode:return a.receiveMode ? 1.f : 0.f;
         case Volume:return (a.sendDb.load()+60.f)/66.f;
         case Status:return a.status.load()/3.f;
         case Drops:return static_cast<float>(std::min(1.,a.dropped.load()/1000000.));
-        case Queued:return static_cast<float>(std::min(1.,a.queue.available()*10./a.sampleRate.load()));
+        case Queued:return static_cast<float>(std::min(1.,a.queuedSamples()*10./a.sampleRate.load()));
         default:return 0;
         }
     }
@@ -91,7 +96,31 @@ private:
         audio.processing=sending;
         const Sample* left=inputs ? inputs[0] : nullptr;
         const Sample* right=inputs ? inputs[1] : nullptr;
-        if(sending && audio.enabled.load(std::memory_order_relaxed)) {
+        const bool receive=audio.receiveMode.load(std::memory_order_relaxed);
+        const auto epoch=audio.receiveEpoch.load();
+        if(receive) {
+            audio.receiveBlock=std::min(samples,rate_/2);
+            if(callbackEpoch_!=epoch) {
+                audio.receiveQueue.discard(); receivePrimed_=false; callbackEpoch_=epoch;
+            }
+            if(sending) {
+                const bool on=audio.enabled.load();
+                if(!on) { audio.receiveQueue.discard(); receivePrimed_=false; }
+                const auto ready=audio.receiveQueue.available();
+                if(!receivePrimed_ && ready>=static_cast<std::size_t>(std::max(samples,rate_/33))) receivePrimed_=true;
+                const bool copied=on && receivePrimed_ && audio.receiveQueue.pop(outputs[0],outputs[1],static_cast<std::size_t>(samples),epoch);
+                if(!copied) {
+                    if(on && receivePrimed_) audio.underruns.fetch_add(1,std::memory_order_relaxed);
+                    receivePrimed_=false;
+                    for(int ch=0;ch<2;++ch) if(outputs[ch]) std::fill_n(outputs[ch],samples,Sample(0));
+                }
+                return;
+            }
+            audio.receiveQueue.discard(); receivePrimed_=false;
+        } else {
+            audio.receiveQueue.discard(); receivePrimed_=false;
+        }
+        if(!receive && sending && audio.enabled.load(std::memory_order_relaxed)) {
             if(!audio.queue.push(left,right,static_cast<std::size_t>(samples)))
                 audio.dropped.fetch_add(static_cast<std::uint64_t>(samples),std::memory_order_relaxed);
         }
@@ -131,30 +160,45 @@ private:
         case VST_EFFECT_OPCODE_PROGRAM_GET:return 0;
         case VST_EFFECT_OPCODE_PROGRAM_GET_NAME:copyText<24>(ptr,programName_);return 1;
         case VST_EFFECT_OPCODE_PROGRAM_SET_NAME:if(ptr) { std::strncpy(programName_,static_cast<char*>(ptr),23);programName_[23]=0; }return 1;
-        case VST_EFFECT_OPCODE_PARAM_IS_AUTOMATABLE:return index==Send || index==Source || index==Volume;
+        case VST_EFFECT_OPCODE_PARAM_IS_AUTOMATABLE:return index==Send || index==Source || index==Volume || index==Mode;
         case VST_EFFECT_OPCODE_PARAM_GET_NAME: {
-            constexpr const char* names[]{"Send","Source","Status","Lost","Queue","Volume"};
+            constexpr const char* names[]{"Send","Source","Status","Lost","Queue","Volume","Mode"};
             if(index<0 || index>=Count) return 0;copyText<8>(ptr,names[index]);return 1;
         }
         case VST_EFFECT_OPCODE_PARAM_GET_LABEL:copyText<8>(ptr,index==Volume ? "dB" : index==Queued ? "ms" : "");return 1;
         case VST_EFFECT_OPCODE_PARAM_GET_VALUE: {
             if(index<0 || index>=Count) return 0;char text[32]{};
-            if(index==Send) std::snprintf(text,sizeof(text),"%s",audio.enabled ? "On" : "Off");
+            if(index==Mode) std::snprintf(text,sizeof(text),"%s",audio.receiveMode ? "Receive" : "Send");
+            else if(index==Send) std::snprintf(text,sizeof(text),"%s",audio.enabled ? "On" : "Off");
             else if(index==Source) std::snprintf(text,sizeof(text),"%02d",audio.slot.load());
             else if(index==Volume) std::snprintf(text,sizeof(text),"%+.1f",audio.sendDb.load());
             else if(index==Status) std::snprintf(text,sizeof(text),"%s",audio.status==2 ? "Linked" : audio.status==3 ? "Error" : audio.status==1 ? "Waiting" : "Off");
             else if(index==Drops) std::snprintf(text,sizeof(text),"%llu",static_cast<unsigned long long>(audio.dropped.load()));
-            else std::snprintf(text,sizeof(text),"%.1f",std::min(100.,audio.queue.available()*1000./audio.sampleRate.load()));
+            else std::snprintf(text,sizeof(text),"%.1f",std::min(100.,audio.queuedSamples()*1000./audio.sampleRate.load()));
             copyText<8>(ptr,text);return 1;
         }
         case VST_EFFECT_OPCODE_GET_CHUNK_DATA:
             if(!ptr) return 0;
             for(std::uint32_t i=0;i<Count;++i) chunk_.values[i]=getParameter(&effect,i);
+            chunk_.source.fill(0);
+            { const auto selected=audio.selectedSource(); std::strncpy(chunk_.source.data(),selected.c_str(),chunk_.source.size()-1); }
             *static_cast<void**>(ptr)=&chunk_;return sizeof(chunk_);
         case VST_EFFECT_OPCODE_SET_CHUNK_DATA: {
-            if(!ptr || value!=sizeof(Chunk)) return 0;Chunk data;std::memcpy(&data,ptr,sizeof(data));
-            if(data.magic!=chunk_.magic || data.version!=1) return 0;
+            if(!ptr) return 0;
+            Chunk data;
+            if(value==32) {
+                struct Legacy { std::uint32_t magic,version; std::array<float,6> values; } old{};
+                std::memcpy(&old,ptr,sizeof(old));
+                if(old.magic!=chunk_.magic || old.version!=1) return 0;
+                std::copy(old.values.begin(),old.values.end(),data.values.begin());
+                data.values[Mode]=0;
+            } else if(value==sizeof(Chunk)) {
+                std::memcpy(&data,ptr,sizeof(data));
+                if(data.magic!=chunk_.magic || data.version!=2 || !std::memchr(data.source.data(),0,data.source.size())) return 0;
+            } else return 0;
             for(auto x:data.values) if(!std::isfinite(x) || x<0 || x>1) return 0;
+            audio.selectSource(data.source.data());
+            setParameter(&effect,Mode,data.values[Mode]);
             setParameter(&effect,Send,data.values[Send]);setParameter(&effect,Source,data.values[Source]);setParameter(&effect,Volume,data.values[Volume]);return 1;
         }
         case VST_EFFECT_OPCODE_EDITOR_GET_RECT:

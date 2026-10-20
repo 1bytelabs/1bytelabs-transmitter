@@ -32,6 +32,13 @@ void text(HDC dc,HFONT font,const wchar_t* value,int x,int y,int w,int h,COLORRE
     RECT rect{x,y,x+w,y+h}; DrawTextW(dc,value,-1,&rect,flags|DT_SINGLELINE|DT_VCENTER|DT_END_ELLIPSIS|DT_NOPREFIX);
     SelectObject(dc,old);
 }
+std::wstring wide(const std::string& value) {
+    const int count=MultiByteToWideChar(CP_UTF8,0,value.c_str(),-1,nullptr,0);
+    if(count<=0) return L"";
+    std::wstring result(static_cast<std::size_t>(count),0);
+    MultiByteToWideChar(CP_UTF8,0,value.c_str(),-1,result.data(),count);
+    result.resize(static_cast<std::size_t>(count-1)); return result;
+}
 HFONT font(int size,int weight=FW_NORMAL) {
     return CreateFontW(-size,0,0,0,weight,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
@@ -71,7 +78,16 @@ bool NativeEditor::open(HWND parent) {
     for(int i=1;i<=16;++i) {
         wchar_t label[16]; std::swprintf(label,16,L"%02d",i); SendMessageW(source_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(label));
     }
+    mode_=CreateWindowExW(0,L"COMBOBOX",L"Modo",WS_CHILD|WS_VISIBLE|WS_TABSTOP|CBS_DROPDOWNLIST,
+        p(414),p(74),p(178),p(120),window_,reinterpret_cast<HMENU>(104),module,nullptr);
+    SendMessageW(mode_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"Enviar"));
+    SendMessageW(mode_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"Receber"));
+    receiveSource_=CreateWindowExW(0,L"COMBOBOX",L"Fonte NDI para receber",WS_CHILD|WS_TABSTOP|CBS_DROPDOWNLIST|WS_VSCROLL,
+        p(48),p(184),p(350),p(280),window_,reinterpret_cast<HMENU>(105),module,nullptr);
+    SendMessageW(receiveSource_,CB_SETDROPPEDWIDTH,540,0);
     comboFont_=font(p(16));
+    SendMessageW(mode_,WM_SETFONT,reinterpret_cast<WPARAM>(comboFont_),TRUE);
+    SendMessageW(receiveSource_,WM_SETFONT,reinterpret_cast<WPARAM>(comboFont_),TRUE);
     SendMessageW(source_,WM_SETFONT,reinterpret_cast<WPARAM>(comboFont_),TRUE);
     SetWindowTheme(source_,L"DarkMode_Explorer",nullptr);
     INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_BAR_CLASSES}; InitCommonControlsEx(&controls);
@@ -94,7 +110,7 @@ void NativeEditor::close() {
     }
     if(window_) {
         KillTimer(window_,1);
-        DestroyWindow(window_); window_=power_=source_=volume_=diagnostic_=nullptr;
+        DestroyWindow(window_); window_=power_=source_=volume_=diagnostic_=mode_=receiveSource_=nullptr;
         if(comboFont_) { DeleteObject(comboFont_); comboFont_=nullptr; }
     }
 }
@@ -103,6 +119,24 @@ void NativeEditor::edit(std::uint32_t id,double value) {
     tick();
 }
 void NativeEditor::tick() {
+    const bool receive=audio_.receiveMode.load();
+    SendMessageW(mode_,CB_SETCURSEL,receive ? 1 : 0,0);
+    ShowWindow(source_,receive ? SW_HIDE : SW_SHOW);
+    ShowWindow(receiveSource_,receive ? SW_SHOW : SW_HIDE);
+    if(receive && !SendMessageW(receiveSource_,CB_GETDROPPEDSTATE,0,0)) {
+        auto names=audio_.sources(); const auto selected=audio_.selectedSource();
+        if(!selected.empty() && std::find(names.begin(),names.end(),selected)==names.end()) names.push_back(selected);
+        if(names!=visibleSources_ || SendMessageW(receiveSource_,CB_GETCOUNT,0,0)==0) {
+            visibleSources_=names; SendMessageW(receiveSource_,CB_RESETCONTENT,0,0);
+            SendMessageW(receiveSource_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(L"Selecione uma fonte NDI"));
+            for(const auto& name:names) {
+                const auto label=wide(name);
+                SendMessageW(receiveSource_,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(label.c_str()));
+            }
+        }
+        const auto found=std::find(visibleSources_.begin(),visibleSources_.end(),selected);
+        SendMessageW(receiveSource_,CB_SETCURSEL,found==visibleSources_.end() ? 0 : 1+std::distance(visibleSources_.begin(),found),0);
+    }
     const auto now=GetTickCount64();
     const float decay=static_cast<float>(std::pow(.12,std::min<ULONGLONG>(now-lastTick_,1000)/1000.));
     for(int i=0;i<2;++i) {
@@ -116,7 +150,7 @@ void NativeEditor::tick() {
     const auto slot=std::clamp(audio_.slot.load(),1,16)-1;
     if(SendMessageW(source_,CB_GETCURSEL,0,0)!=slot && !SendMessageW(source_,CB_GETDROPPEDSTATE,0,0))
         SendMessageW(source_,CB_SETCURSEL,slot,0);
-    const wchar_t* label=audio_.enabled.load() ? L"Desligar envio NDI" : L"Ligar envio NDI";
+    const wchar_t* label=audio_.enabled.load() ? L"Desligar" : receive ? L"Ligar recepcao NDI" : L"Ligar envio NDI";
     wchar_t previous[64]{}; GetWindowTextW(power_,previous,64);
     if(std::wcscmp(previous,label)) SetWindowTextW(power_,label);
     InvalidateRect(window_,nullptr,FALSE); InvalidateRect(power_,nullptr,FALSE);
@@ -141,21 +175,22 @@ void NativeEditor::paint(HDC target) {
     SetViewportExtEx(dc,client.right,client.bottom,nullptr);
     text(dc,small_,L"1BYTE LABS  /  AUDIO OVER NETWORK",28,18,480,22,Green);
     text(dc,title_,L"1Byte Labs Audio",28,44,400,42);
-    text(dc,small_,L"VST2 / 0.2.1",480,51,132,24,Muted,DT_RIGHT);
+    text(dc,small_,L"VST2 / 0.3.0",480,51,132,24,Muted,DT_RIGHT);
     rounded(dc,28,100,584,128,Card);
-    const bool enabled=audio_.enabled.load(), processing=audio_.processing.load();
+    const bool enabled=audio_.enabled.load(), processing=audio_.processing.load(), receive=audio_.receiveMode.load();
     const int status=audio_.status.load();
-    const wchar_t* state=!enabled ? L"Envio desligado" : !processing ? L"Host pausou o processamento" :
-        status==2 ? L"Receptor conectado" : status==3 ? L"Erro ao iniciar NDI" : L"Aguardando receptor";
+    const wchar_t* state=!enabled ? L"Desligado" : !processing ? L"Host pausou o processamento" :
+        status==2 ? (receive ? L"Fonte conectada" : L"Receptor conectado") : status==3 ? L"Erro ao iniciar NDI" : (receive ? L"Aguardando fonte" : L"Aguardando receptor");
     const COLORREF stateColor=!enabled ? Muted : status==3 ? Red : status==2 && processing ? Green : Amber;
     rounded(dc,48,120,9,9,stateColor,stateColor);
     text(dc,normal_,state,68,110,330,28,stateColor);
     wchar_t source[80]; std::swprintf(source,80,L"1Byte Labs Send %02d",audio_.slot.load());
-    text(dc,number_,source,48,142,342,36);
-    text(dc,small_,L"NUMERO DA FONTE",48,190,186,24,Muted);
+    const auto selected=wide(audio_.selectedSource());
+    text(dc,receive ? small_ : number_,receive ? (selected.empty() ? L"Escolha a fonte abaixo" : selected.c_str()) : source,48,142,342,36);
+    if(!receive) text(dc,small_,L"NUMERO DA FONTE",48,190,186,24,Muted);
 
     rounded(dc,28,244,584,128,Card);
-    text(dc,small_,L"AUDIO PARA ENVIO / APOS FADER",48,254,300,22,Muted);
+    text(dc,small_,receive ? L"AUDIO RECEBIDO / APOS FADER" : L"AUDIO PARA ENVIO / APOS FADER",48,254,300,22,Muted);
     wchar_t rate[80]; std::swprintf(rate,80,L"%.1f kHz  /  2 canais",audio_.sampleRate.load()/1000.);
     text(dc,small_,rate,340,254,252,22,Muted,DT_RIGHT);
     for(int channel=0;channel<2;++channel) {
@@ -174,21 +209,21 @@ void NativeEditor::paint(HDC target) {
     }
     text(dc,small_,L"-60                 -36                  -18                  -6      0 dBFS",76,345,516,19,Muted);
     rounded(dc,28,388,584,88,Card);
-    text(dc,small_,L"VOLUME DE ENVIO",48,398,300,22,Muted);
+    text(dc,small_,receive ? L"VOLUME RECEBIDO" : L"VOLUME DE ENVIO",48,398,300,22,Muted);
     text(dc,small_,L"-60 dB",48,414,70,18,Muted);
     text(dc,small_,L"0 dB",410,414,34,18,Muted);
     text(dc,small_,L"+6 dB",448,414,36,18,Muted);
     wchar_t volumeText[32]; std::swprintf(volumeText,32,L"%+.1f dB",audio_.sendDb.load());
     text(dc,number_,volumeText,482,414,110,34,Green,DT_RIGHT);
     rounded(dc,28,492,282,68,Card); rounded(dc,326,492,286,68,Card);
-    text(dc,small_,L"FILA DE ENVIO",48,498,220,20,Muted);
-    const double queued=std::clamp(audio_.queue.available()*1000./audio_.sampleRate.load(),0.,100.);
+    text(dc,small_,receive ? L"BUFFER DE RECEPCAO" : L"FILA DE ENVIO",48,498,220,20,Muted);
+    const double queued=std::clamp(audio_.queuedSamples()*1000./audio_.sampleRate.load(),0.,100.);
     wchar_t queue[64]; std::swprintf(queue,64,L"%.1f ms",queued);
     text(dc,number_,queue,48,520,220,30,queued>=75 ? Amber : Text);
-    const auto drops=audio_.dropped.load(); wchar_t dropped[64]; std::swprintf(dropped,64,L"%llu",static_cast<unsigned long long>(drops));
-    text(dc,small_,L"SAMPLES DESCARTADOS",346,498,246,20,Muted);
+    const auto drops=receive ? audio_.underruns.load() : audio_.dropped.load(); wchar_t dropped[64]; std::swprintf(dropped,64,L"%llu",static_cast<unsigned long long>(drops));
+    text(dc,small_,receive ? L"FALTAS DE BUFFER" : L"SAMPLES DESCARTADOS",346,498,246,20,Muted);
     text(dc,number_,dropped,346,520,246,30,drops ? Amber : Green);
-    text(dc,small_,L"Modo Enviar / O fader altera so o NDI. Fila nao e latencia total.",28,570,584,22,Muted);
+    text(dc,small_,receive ? L"Receber substitui a entrada. FrameSync adapta o audio ao host." : L"Modo Enviar / O fader altera so o NDI. Fila nao e latencia total.",28,570,584,22,Muted);
     SetMapMode(dc,MM_TEXT);
     BitBlt(target,0,0,client.right,client.bottom,dc,0,0,SRCCOPY);
 }
@@ -227,9 +262,16 @@ LRESULT CALLBACK NativeEditor::windowProc(HWND window,UINT msg,WPARAM wp,LPARAM 
     }
     case WM_PAINT: { PAINTSTRUCT ps{}; auto dc=BeginPaint(window,&ps); self->paint(dc); EndPaint(window,&ps); return 0; }
     case WM_COMMAND:
+        if(LOWORD(wp)==104 && HIWORD(wp)==CBN_SELCHANGE) self->edit(6,SendMessageW(self->mode_,CB_GETCURSEL,0,0)==1 ? 1. : 0.);
+        if(LOWORD(wp)==105 && HIWORD(wp)==CBN_SELCHANGE) {
+            const auto selected=SendMessageW(self->receiveSource_,CB_GETCURSEL,0,0);
+            self->audio_.selectSource(selected>0 && static_cast<std::size_t>(selected)<=self->visibleSources_.size() ?
+                self->visibleSources_[static_cast<std::size_t>(selected-1)] : "");
+            self->edit(6,1.); // Notify host to save the updated source in its state chunk.
+        }
         if(LOWORD(wp)==103 && HIWORD(wp)==BN_CLICKED) {
             wchar_t host[32768]{}; GetModuleFileNameW(nullptr,host,32768);
-            const auto report=L"1Byte Labs Audio VST2 0.2.1 / Windows x64\r\nHost: "+
+            const auto report=L"1Byte Labs Audio VST2 0.3.0 / Windows x64\r\nHost: "+
                 std::wstring(host)+L"\r\n\r\n"+self->audio_.diagnostic();
             MessageBoxW(window,report.c_str(),L"Diagnostico NDI",MB_OK|MB_ICONINFORMATION);
         }
@@ -249,7 +291,7 @@ LRESULT CALLBACK NativeEditor::windowProc(HWND window,UINT msg,WPARAM wp,LPARAM 
         SetMapMode(item->hDC,MM_ANISOTROPIC); SetWindowExtEx(item->hDC,178,46,nullptr);
         SetViewportExtEx(item->hDC,item->rcItem.right,item->rcItem.bottom,nullptr);
         rounded(item->hDC,0,0,178,46,color,color);
-        text(item->hDC,self->normal_,on ? L"Desligar envio" : L"Ligar envio",0,0,178,46,on ? Green : Bg,DT_CENTER);
+        text(item->hDC,self->normal_,on ? L"Desligar" : self->audio_.receiveMode ? L"Ligar recepcao" : L"Ligar envio",0,0,178,46,on ? Green : Bg,DT_CENTER);
         if(item->itemState&ODS_FOCUS) { RECT focus{5,5,173,41}; DrawFocusRect(item->hDC,&focus); }
         RestoreDC(item->hDC,saved);
         return TRUE;

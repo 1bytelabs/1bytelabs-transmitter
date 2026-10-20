@@ -1,4 +1,4 @@
-name: 1Byte Labs Audio VST2 - Send prototype
+name: 1Byte Labs Audio VST2 - Send and Receive
 on:
   workflow_dispatch:
   push:
@@ -37,12 +37,22 @@ jobs:
           Copy-Item plugins/1byte-audio-vst2/README.md dist-vst2/LEIA-ME.md
           Copy-Item THIRD_PARTY_NOTICES.md dist-vst2/AVISOS-NDI.md
           Copy-Item build-vst2/_deps/vst2abi-src/LICENSE dist-vst2/LICENCA-ABI-VST2.txt
-          Compress-Archive dist-vst2/* 1ByteLabs-Audio-0.2.1-VST2-Windows-x64.zip -Force
+          Compress-Archive dist-vst2/* 1ByteLabs-Audio-0.3.0-VST2-Windows-x64.zip -Force
       - name: Smoke test packaged DLL with real NDI runtime
         shell: pwsh
         run: |
           & 'build-vst2/Release/vst2-host-test.exe' "$pwd/dist-vst2/1Byte Labs Audio.dll" --real
           if ($LASTEXITCODE -ne 0) { throw 'Real runtime smoke test failed' }
+      - name: Test Receive with real NDI runtime and local Send source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $loopbackDir = Join-Path $env:RUNNER_TEMP '1byte-real-ndi-loopback'
+          New-Item -ItemType Directory -Force $loopbackDir | Out-Null
+          Copy-Item build-vst2/Release/vst2-receive-loopback.exe $loopbackDir
+          Copy-Item dist-vst2/Processing.NDI.Lib.x64.dll $loopbackDir
+          & (Join-Path $loopbackDir 'vst2-receive-loopback.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'Real NDI receive loopback failed' }
       - name: Build installer
         shell: pwsh
         run: |
@@ -72,9 +82,9 @@ jobs:
       - name: Upload VST2 and installer
         uses: actions/upload-artifact@v4
         with:
-          name: 1ByteLabs-Audio-0.2.1-VST2-Windows-x64
+          name: 1ByteLabs-Audio-0.3.0-VST2-Windows-x64
           path: |
-            1ByteLabs-Audio-0.2.1-VST2-Windows-x64.zip
+            1ByteLabs-Audio-0.3.0-VST2-Windows-x64.zip
             installer-out/*.exe
           if-no-files-found: error
       - name: Upload test report and editor capture

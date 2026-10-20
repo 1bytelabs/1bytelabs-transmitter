@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <windows.h>
 #include <commctrl.h>
 #include <vst.h>
@@ -99,12 +100,18 @@ int main(int argc,char** argv) {
     audioCheck<float>(p,false);audioCheck<float>(p,true);audioCheck<double>(p,false);audioCheck<double>(p,true);
     p->set_parameter(p,1,3.f/15.f);p->set_parameter(p,0,1);
     void* state{};const auto size=p->control(p,VST_EFFECT_OPCODE_GET_CHUNK_DATA,1,0,&state,0);
-    require(size==32 && state,"chunk size");
+    require(size==1060 && state,"chunk size");
     std::vector<unsigned char> saved(static_cast<unsigned char*>(state),static_cast<unsigned char*>(state)+size);
     auto* other=entry(host);require(other!=nullptr,"second instance");
     require(other->control(other,VST_EFFECT_OPCODE_SET_CHUNK_DATA,1,size,saved.data(),0)==1,"restore chunk");
     require(std::abs(other->get_parameter(other,5)-54.f/66.f)<.00001,"gain persists");
     require(std::abs(other->get_parameter(other,1)-3.f/15.f)<.00001,"source persists");
+    // A 0.2.x project must load with Send selected and its original gain/source.
+    struct Legacy { std::uint32_t magic,version; std::array<float,6> values; } old{};
+    old.magic=VST_FOURCC('1','B','A','2');old.version=1;old.values={1,3.f/15.f,0,0,0,54.f/66.f};
+    other->set_parameter(other,6,1);
+    require(other->control(other,VST_EFFECT_OPCODE_SET_CHUNK_DATA,1,sizeof(old),&old,0)==1,"restore legacy 0.2 state");
+    require(other->get_parameter(other,6)==0,"legacy state defaults to Send");
     saved[0]^=0xFF;
     require(other->control(other,VST_EFFECT_OPCODE_SET_CHUNK_DATA,1,size,saved.data(),0)==0,"reject corrupt state");
     other->control(other,VST_EFFECT_OPCODE_DESTROY,0,0,nullptr,0);
@@ -145,9 +152,61 @@ int main(int argc,char** argv) {
         p->control(p,VST_EFFECT_OPCODE_EDITOR_CLOSE,0,0,nullptr,0);
     }
     require(edits>=5,"host receives automation callbacks");
+    // Receive source is selected in the same editor that OBS opens.
+    require(p->control(p,VST_EFFECT_OPCODE_EDITOR_OPEN,0,0,parent,0)==1,"open receive editor");
+    auto child=FindWindowExW(parent,nullptr,L"OneByteAudioVst2Editor_0200",nullptr);
+    SendMessageW(GetDlgItem(child,104),CB_SETCURSEL,1,0);
+    SendMessageW(child,WM_COMMAND,MAKEWPARAM(104,CBN_SELCHANGE),0);
+    p->set_parameter(p,5,60.f/66.f); // 0 dB
+    for(int i=0;i<30;++i) { p->process_float(p,inputs,outputs,480);Sleep(10); }
+    SendMessageW(child,WM_TIMER,1,0);
+    require(SendMessageW(GetDlgItem(child,105),CB_GETCOUNT,0,0)==3,"discovered source list");
+    SendMessageW(GetDlgItem(child,105),CB_SETCURSEL,2,0); // sorted list: Alternate, Audio
+    SendMessageW(child,WM_COMMAND,MAKEWPARAM(105,CBN_SELCHANGE),0);
+    for(int i=0;i<45;++i) { p->process_float(p,inputs,outputs,480);Sleep(10); }
+    require(std::abs(outL[100]-.375f)<.0001f && std::abs(outR[100]-.125f)<.0001f,"Receive replaces host input, planar stride correct");
+    const int sentBefore=count();
+    for(int i=0;i<10;++i) { p->process_float(p,inputs,outputs,480);Sleep(10); }
+    require(count()==sentBefore,"Receive never retransmits host input");
+    std::array<double,480> dl{},dr{}; double* doubles[]{dl.data(),dr.data()};
+    for(int i=0;i<10;++i) { p->process_double(p,nullptr,doubles,480);Sleep(10); }
+    require(std::abs(dl[100]-.375)<.0001 && std::abs(dr[100]-.125)<.0001,"double Receive and null host input");
+    // Persist the selected name together with the Receive mode.
+    state=nullptr;const auto receiveSize=p->control(p,VST_EFFECT_OPCODE_GET_CHUNK_DATA,1,0,&state,0);
+    std::vector<unsigned char> receiveSaved(static_cast<unsigned char*>(state),static_cast<unsigned char*>(state)+receiveSize);
+    auto restored=entry(host);
+    require(restored->control(restored,VST_EFFECT_OPCODE_SET_CHUNK_DATA,1,receiveSize,receiveSaved.data(),0)==1,"receive state restore");
+    require(restored->get_parameter(restored,6)==1,"receive mode persists");
+    void* restoredState{};restored->control(restored,VST_EFFECT_OPCODE_GET_CHUNK_DATA,1,0,&restoredState,0);
+    require(std::memcmp(static_cast<unsigned char*>(restoredState)+36,receiveSaved.data()+36,1024)==0,"source name persists exactly");
+    restored->control(restored,VST_EFFECT_OPCODE_DESTROY,0,0,nullptr,0);
+    p->set_parameter(p,5,54.f/66.f);
+    for(int i=0;i<30;++i) { p->process_float(p,inputs,outputs,480);Sleep(10); }
+    require(std::abs(outL[100]-.375f*std::pow(10.f,-6.f/20.f))<.0001f,"Receive fader gain");
+    p->set_parameter(p,5,60.f/66.f);
+    SendMessageW(GetDlgItem(child,105),CB_SETCURSEL,1,0);
+    SendMessageW(child,WM_COMMAND,MAKEWPARAM(105,CBN_SELCHANGE),0);
+    for(int i=0;i<40;++i) { p->process_float(p,inputs,outputs,480);Sleep(10); }
+    require(outL[100]<-.37f && outR[100]<-.12f,"switch Receive source without old source audio");
+    auto fail=reinterpret_cast<void(*)(int)>(GetProcAddress(runtime,"TestFailure"));
+    fail(3);
+    for(int i=0;i<30;++i) { p->process_float(p,inputs,outputs,480);Sleep(10); }
+    require(outL[100]==0 && p->get_parameter(p,2)<.5f,"disconnect becomes silence and waiting");
+    fail(0);
+    for(int i=0;i<30;++i) { p->process_float(p,inputs,outputs,480);Sleep(10); }
+    require(outL[100]<-.37f,"reconnection recovers audio");
+    p->set_parameter(p,0,0);p->process_float(p,inputs,outputs,480);
+    require(outL[100]==0 && outR[100]==0,"disabled Receive is silent");
+    p->control(p,VST_EFFECT_OPCODE_BYPASS,0,1,nullptr,0);
+    p->process_float(p,inputs,outputs,480);
+    require(outL==l && outR==r,"bypassed Receive passes local input");
+    p->control(p,VST_EFFECT_OPCODE_BYPASS,0,0,nullptr,0);
+    p->control(p,VST_EFFECT_OPCODE_EDITOR_CLOSE,0,0,nullptr,0);
     DestroyWindow(parent);
     p->control(p,VST_EFFECT_OPCODE_SUSPEND_RESUME,0,0,nullptr,0);
     require(senders()==0,"suspend releases NDI sender");
+    auto receiveObjects=reinterpret_cast<int(*)()>(GetProcAddress(runtime,"TestReceiveObjects"));
+    require(receiveObjects && receiveObjects()==0,"suspend releases finder receiver and FrameSync");
     p->control(p,VST_EFFECT_OPCODE_DESTROY,0,0,nullptr,0);
     FreeLibrary(dll);FreeLibrary(runtime);
     // Reload must work after the native window class and runtime were released.
