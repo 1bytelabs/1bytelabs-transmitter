@@ -64,6 +64,8 @@ jobs:
           Copy-Item build-obs-source/Release/1byte-labs-audio.dll dist-audio/obs/obs-plugins/64bit
           Copy-Item $dll.FullName dist-audio/obs/obs-plugins/64bit/1byte-audio-ndi
           Copy-Item plugins/1byte-audio-obs/README.md dist-audio/obs/data/obs-plugins/1byte-labs-audio/README.md
+          Copy-Item THIRD_PARTY_NOTICES.md dist-audio/obs/data/obs-plugins/1byte-labs-audio/AVISOS-NDI.md
+          Copy-Item plugins/1byte-audio-obs/LICENSE dist-audio/obs/data/obs-plugins/1byte-labs-audio/LICENSE.txt
           Compress-Archive dist-audio/* 1ByteLabs-Audio-0.4.0-Windows-x64.zip -Force
           Compress-Archive dist-audio/obs/* 1ByteLabs-Audio-0.4.0-OBS-Portable-x64.zip -Force
       - name: Test packaged VST2 and real NDI loopback
@@ -101,12 +103,22 @@ jobs:
           & $compiler "/DStageDir=$pwd\dist-audio" "/DOutputDir=$pwd\installer-out" plugins/1byte-audio-vst2/installer.iss
           if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
       - name: Test combined, VST-only and portable OBS-only installations
+        timeout-minutes: 4
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          function Wait-Setup($process, $label) {
+            if (-not $process.WaitForExit(45000)) {
+              Stop-Process -Id $process.Id -Force
+              throw "Installer timed out: $label"
+            }
+            $process.Refresh()
+            return $process.ExitCode
+          }
           $root = Join-Path $env:RUNNER_TEMP '1byte-installer-components'
           $setup = (Get-ChildItem installer-out -Filter '*.exe' | Select-Object -First 1).FullName
           foreach ($selection in @('vst,obs','vst','obs')) {
+            Write-Host "Testing installer components: $selection"
             $case = $selection.Replace(',','-')
             $testRoot = Join-Path $root $case
             $appDir = Join-Path $testRoot 'app'
@@ -116,21 +128,21 @@ jobs:
             Copy-Item "$env:OBS_RUNTIME_ROOT/bin/64bit/obs64.exe" "$obsDir/bin/64bit"
             Set-Content "$obsDir/keep.txt" 'Must survive uninstall'
             $obsArgument = if ($selection -eq 'obs') { "$obsDir/bin/64bit" } else { $obsDir }
-            $process = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/COMPONENTS=$selection","/DIR=`"$appDir`"","/VSTDIR=`"$vstDir`"","/OBSDIR=`"$obsArgument`"") -Wait -PassThru
-            if ($process.ExitCode -ne 0) { throw "Install failed: $selection" }
+            $process = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/COMPONENTS=$selection","/DIR=`"$appDir`"","/VSTDIR=`"$vstDir`"","/OBSDIR=`"$obsArgument`"") -PassThru
+            if ((Wait-Setup $process "install $selection") -ne 0) { throw "Install failed: $selection" }
             $wantVst = $selection.Contains('vst')
             $wantObs = $selection.Contains('obs')
             if ((Test-Path "$vstDir/1Byte Labs Audio.dll") -ne $wantVst) { throw "VST component mismatch: $selection" }
             if ((Test-Path "$obsDir/obs-plugins/64bit/1byte-labs-audio.dll") -ne $wantObs) { throw "OBS component mismatch: $selection" }
             if ($wantObs -and -not (Test-Path "$obsDir/obs-plugins/64bit/1byte-audio-ndi/Processing.NDI.Lib.x64.dll")) { throw 'OBS runtime missing' }
-            $process = Start-Process "$appDir/unins000.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
-            if ($process.ExitCode -ne 0) { throw 'Uninstaller failed' }
+            $process = Start-Process "$appDir/unins000.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
+            if ((Wait-Setup $process "uninstall $selection") -ne 0) { throw 'Uninstaller failed' }
             if ((Test-Path "$vstDir/1Byte Labs Audio.dll") -or (Test-Path "$obsDir/obs-plugins/64bit/1byte-labs-audio.dll")) { throw 'Owned plugin not removed' }
             if (-not (Test-Path "$obsDir/keep.txt") -or -not (Test-Path "$obsDir/bin/64bit/obs64.exe")) { throw 'Unrelated OBS files removed' }
           }
           $badApp = Join-Path $root 'bad-app'
-          $process = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/COMPONENTS=obs',"/DIR=`"$badApp`"","/OBSDIR=`"$root/not-an-obs`"") -Wait -PassThru
-          if ($process.ExitCode -eq 0) { throw 'Invalid OBS directory was accepted' }
+          $process = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/COMPONENTS=obs',"/DIR=`"$badApp`"","/OBSDIR=`"$root/not-an-obs`"") -PassThru
+          if ((Wait-Setup $process 'invalid OBS path') -eq 0) { throw 'Invalid OBS directory was accepted' }
           if (Test-Path "$root/not-an-obs/obs-plugins") { throw 'Invalid OBS directory was modified' }
       - name: Upload components and installer
         uses: actions/upload-artifact@v4

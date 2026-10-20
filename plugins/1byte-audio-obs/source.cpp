@@ -68,7 +68,7 @@ struct Source {
                     frame.data[1]=reinterpret_cast<const uint8_t*>(right.data());
                     frame.frames=count;frame.speakers=SPEAKERS_STEREO;
                     frame.format=AUDIO_FORMAT_FLOAT_PLANAR;frame.samples_per_sec=rate;
-                    frame.timestamp=os_gettime_ns();
+                    frame.timestamp=deadline; // Fixed sample clock; avoid adding wake-up jitter to timestamps.
                     obs_source_output_audio(source,&frame);
                 }
                 const int status=audio.status.load();

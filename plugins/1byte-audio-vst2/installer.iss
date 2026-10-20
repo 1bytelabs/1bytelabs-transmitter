@@ -40,6 +40,8 @@ Source: "{#StageDir}\Processing.NDI.Lib.x64.dll"; DestDir: "{code:GetVstDir}"; C
 Source: "{#StageDir}\obs\obs-plugins\64bit\1byte-labs-audio.dll"; DestDir: "{code:GetObsDir}\obs-plugins\64bit"; Components: obs; Flags: ignoreversion
 Source: "{#StageDir}\obs\obs-plugins\64bit\1byte-audio-ndi\Processing.NDI.Lib.x64.dll"; DestDir: "{code:GetObsDir}\obs-plugins\64bit\1byte-audio-ndi"; Components: obs; Flags: ignoreversion
 Source: "{#StageDir}\obs\data\obs-plugins\1byte-labs-audio\README.md"; DestDir: "{code:GetObsDir}\data\obs-plugins\1byte-labs-audio"; Components: obs; Flags: ignoreversion
+Source: "{#StageDir}\obs\data\obs-plugins\1byte-labs-audio\AVISOS-NDI.md"; DestDir: "{code:GetObsDir}\data\obs-plugins\1byte-labs-audio"; Components: obs; Flags: ignoreversion
+Source: "{#StageDir}\obs\data\obs-plugins\1byte-labs-audio\LICENSE.txt"; DestDir: "{code:GetObsDir}\data\obs-plugins\1byte-labs-audio"; Components: obs; Flags: ignoreversion
 Source: "{#StageDir}\LEIA-ME.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageDir}\AVISOS-NDI.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#StageDir}\LICENCA-ABI-VST2.txt"; DestDir: "{app}"; Components: vst; Flags: ignoreversion
@@ -86,6 +88,25 @@ begin
     if ValidObsRoot(NormalizeObsRoot(Candidate)) then begin Result := NormalizeObsRoot(Candidate); Exit; end;
   Candidate := ExpandConstant('{autopf}\obs-studio');
   if ValidObsRoot(Candidate) then Result := Candidate;
+end;
+
+function InitializeSetup(): Boolean;
+var
+  Components, RequestedObs: String;
+begin
+  Result := True;
+  { Reject an explicitly requested invalid silent OBS target before creating
+    the wizard. PrepareToInstall errors otherwise leave a retry page open. }
+  Components := Lowercase(ExpandConstant('{param:COMPONENTS|}'));
+  RequestedObs := ExpandConstant('{param:OBSDIR|}');
+  if WizardSilent and ((Pos('obs', Components) > 0) or
+    ((Components = '') and (Lowercase(ExpandConstant('{param:TYPE|}')) <> 'vstonly'))) then begin
+    if RequestedObs = '' then RequestedObs := DetectObsRoot;
+    if not ValidObsRoot(NormalizeObsRoot(RequestedObs)) then begin
+      Log('Pasta OBS invalida para instalacao silenciosa: ' + RequestedObs);
+      Result := False;
+    end;
+  end;
 end;
 
 procedure InitializeWizard;
