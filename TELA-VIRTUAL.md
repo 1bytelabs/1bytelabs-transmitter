@@ -1,6 +1,6 @@
 # Tela virtual — versão experimental
 
-A opção **Tela virtual** transmite um monitor criado pelo projeto open source
+A opção **Monitor** também transmite a tela virtual criada pelo projeto open source
 [VirtualDrivers / Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver).
 O Transmitter continua portable. A pasta `virtual-display` inclui o utilitário oficial
 Virtual Driver Control 25.7.23 com seus componentes originais, sem modificar
@@ -16,7 +16,7 @@ os arquivos assinados. Somente o driver exige instalação inicial no Windows.
 4. Abra as configurações de Tela pelo mesmo botão e selecione **Estender estes vídeos**.
    Mantenha o monitor físico como principal e configure o virtual em 1920 × 1080,
    SDR, inicialmente a 60 Hz.
-5. No Transmitter, escolha **Tela virtual** e clique em **↻**.
+5. No Transmitter, escolha **Monitor** e clique em **↻**.
 6. Selecione o monitor virtual e inicie a transmissão normalmente.
    No modo protegido, autorize o receptor como de costume.
 
@@ -25,9 +25,10 @@ para ajustar resolução e extensão; **Não** abre o utilitário oficial para g
 instalação, ativação e remoção. A instalação ainda é confirmada no utilitário original;
 o botão não instala nem remove drivers silenciosamente.
 
-Somente monitores ativos do adaptador Virtual Display Driver / MttVDD aparecem
-nessa categoria. Um monitor físico não é escolhido como substituto.
-Se a lista estiver vazia, confira se o driver está instalado e a tela está estendida.
+A lista de monitores inclui telas físicas e virtuais. A tela do adaptador
+Virtual Display Driver / MttVDD aparece com a indicação **(virtual)**.
+Escolha essa tela para transmitir seu conteúdo. Se ela não aparecer, confira
+se o driver está instalado e a tela está estendida.
 O driver pode exigir reinicialização ou o Visual C++ Redistributable.
 
 ## PowerPoint e outras janelas

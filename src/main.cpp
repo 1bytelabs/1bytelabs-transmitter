@@ -174,8 +174,7 @@ void setControlFont(HWND hwnd, HFONT font) { SendMessageW(hwnd, WM_SETFONT, rein
 
 CaptureKind selectedKind() {
     const LRESULT selected = SendMessageW(g.captureKind, CB_GETCURSEL, 0, 0);
-    return selected == 2 ? CaptureKind::VirtualMonitor :
-        selected == 1 ? CaptureKind::Window : CaptureKind::Monitor;
+    return selected == 1 ? CaptureKind::Window : CaptureKind::Monitor;
 }
 
 void refreshSources(int preferredIndex = -1) {
@@ -183,11 +182,12 @@ void refreshSources(int preferredIndex = -1) {
     const CaptureKind kind = selectedKind();
     if (kind != CaptureKind::Window) {
         g.monitors = enumerateMonitors();
-        if (kind == CaptureKind::VirtualMonitor) {
-            std::erase_if(g.monitors, [](const MonitorSource& item) { return !item.virtualDisplay; });
+        for (const auto& item : g.monitors) {
+            const LRESULT index = SendMessageW(g.captureSource, CB_ADDSTRING, 0,
+                reinterpret_cast<LPARAM>(item.label.c_str()));
+            if (index >= 0) SendMessageW(g.captureSource, CB_SETITEMDATA, index,
+                item.virtualDisplay ? 1 : 0);
         }
-        for (const auto& item : g.monitors)
-            SendMessageW(g.captureSource, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item.label.c_str()));
     } else {
         g.windows = enumerateWindows(g.window);
         for (const auto& item : g.windows)
@@ -200,8 +200,6 @@ void refreshSources(int preferredIndex = -1) {
     }
     g.previewFrame.clear();
     g.previewWidth = g.previewHeight = 0;
-    if (kind == CaptureKind::VirtualMonitor && count == 0)
-        postStatus(L"Tela virtual não encontrada · clique em Configurar tela virtual");
     if (g.preview) InvalidateRect(g.preview, nullptr, TRUE);
 }
 
@@ -702,7 +700,7 @@ void stopTransmission() {
 
 void showHelp() {
     MessageBoxW(g.window,
-        L"1. Escolha Monitor, Janela ou Tela virtual e confirme a fonte na prévia.\n"
+        L"1. Escolha Monitor ou Janela e confirme a fonte na prévia.\n"
         L"2. Desmarque Enviar áudio se quiser transmitir somente a imagem.\n"
         L"3. No Modo protegido, libere o receptor quando ele for detectado.\n"
         L"4. Um receptor NDI pode abrir mais de uma conexão técnica; o app memoriza a linha de base.\n"
@@ -762,7 +760,6 @@ void createUi() {
     g.captureKind = addControl(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL, 32, 274, 140, 220, IdCaptureKind, gFont);
     SendMessageW(g.captureKind, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Monitor"));
     SendMessageW(g.captureKind, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Janela"));
-    SendMessageW(g.captureKind, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Tela virtual"));
     g.captureSource = addControl(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL, 182, 274, 266, 260, IdCaptureSource, gFont);
     g.refresh = addControl(L"BUTTON", L"↻", BS_PUSHBUTTON, 458, 274, 40, 34, IdRefresh, gFontBold);
     g.fps = addControl(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST, 32, 340, 120, 120, IdFps, gFont);
@@ -814,10 +811,28 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         BOOL dark = TRUE;
         DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
         g.settings = loadSettings(iniPath());
+        bool missingSavedVirtual = false;
+        // Migrate the old filtered virtual-monitor index to the unified monitor list.
+        if (g.settings.captureKind == CaptureKind::VirtualMonitor) {
+            const auto monitors = enumerateMonitors();
+            int virtualIndex = 0;
+            int selectedIndex = -1;
+            for (size_t i = 0; i < monitors.size(); ++i) {
+                if (monitors[i].virtualDisplay && virtualIndex++ == g.settings.sourceIndex) {
+                    selectedIndex = static_cast<int>(i);
+                    break;
+                }
+            }
+            g.settings.captureKind = CaptureKind::Monitor;
+            // Leave the source unselected if the saved virtual display is unavailable.
+            g.settings.sourceIndex = selectedIndex;
+            missingSavedVirtual = selectedIndex < 0;
+        }
         createUi();
         SetWindowTextW(g.sourceName, g.settings.sourceName.c_str());
         SendMessageW(g.captureKind, CB_SETCURSEL, static_cast<int>(g.settings.captureKind), 0);
         refreshSources(g.settings.sourceIndex);
+        if (missingSavedVirtual) SendMessageW(g.captureSource, CB_SETCURSEL, static_cast<WPARAM>(-1), 0);
         SendMessageW(g.fps, CB_SETCURSEL, g.settings.fps == 60 ? 1 : 0, 0);
         setChecked(g.cursor, g.settings.showCursor);
         setChecked(g.settings.mode == TransmissionMode::Quick ? g.quickMode : g.protectedMode, true);

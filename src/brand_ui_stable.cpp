@@ -327,7 +327,12 @@ void showLicenseNotice(HWND owner) {
         L"1Byte Labs Transmitter utiliza tecnologia NDI® para transmissão de vídeo e áudio em rede.\n\n"
         L"1Byte Labs Transmitter é um software independente e não é afiliado, patrocinado, certificado ou desenvolvido pela Vizrt NDI AB.\n\n"
         L"NDI® é uma marca registrada da Vizrt NDI AB.\n\n"
-        L"Os avisos aplicáveis aos componentes de terceiros acompanham o aplicativo no arquivo AVISOS-DE-TERCEIROS.txt.",
+        L"Virtual Display Driver / Virtual Driver Control — projeto VirtualDrivers.\n"
+        L"Copyright (c) 2024 Virtual Display — licença MIT.\n"
+        L"https://github.com/VirtualDrivers/Virtual-Display-Driver\n\n"
+        L"O pacote inclui os componentes originais assinados. A licença completa acompanha a pasta "
+        L"virtual-display, no arquivo LICENSE-VIRTUAL-DISPLAY.txt.\n\n"
+        L"Os demais avisos acompanham o aplicativo em AVISOS-DE-TERCEIROS.txt.",
         L"Licenças e componentes de terceiros", MB_OK | MB_ICONINFORMATION);
 }
 

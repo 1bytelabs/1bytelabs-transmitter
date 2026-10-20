@@ -23,8 +23,11 @@ bool windowMode() {
 }
 
 bool virtualMode() {
-    HWND combo = gMain ? GetDlgItem(gMain, kIdCaptureKind) : nullptr;
-    return combo && SendMessageW(combo, CB_GETCURSEL, 0, 0) == 2;
+    if (windowMode()) return false;
+    HWND combo = gMain ? GetDlgItem(gMain, kIdCaptureSource) : nullptr;
+    if (!combo) return false;
+    const LRESULT index = SendMessageW(combo, CB_GETCURSEL, 0, 0);
+    return index >= 0 && SendMessageW(combo, CB_GETITEMDATA, index, 0) == 1;
 }
 
 void refreshPreviewMode() {
