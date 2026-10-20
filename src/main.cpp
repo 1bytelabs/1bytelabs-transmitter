@@ -2,6 +2,7 @@
 #include <commctrl.h>
 #include <dwmapi.h>
 #include <uxtheme.h>
+#include <shellapi.h>
 
 #include <algorithm>
 #include <atomic>
@@ -172,16 +173,21 @@ void applyDarkTheme(HWND hwnd) { SetWindowTheme(hwnd, L"DarkMode_Explorer", null
 void setControlFont(HWND hwnd, HFONT font) { SendMessageW(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE); }
 
 CaptureKind selectedKind() {
-    return SendMessageW(g.captureKind, CB_GETCURSEL, 0, 0) == 1 ? CaptureKind::Window : CaptureKind::Monitor;
+    const LRESULT selected = SendMessageW(g.captureKind, CB_GETCURSEL, 0, 0);
+    return selected == 1 ? CaptureKind::Window : CaptureKind::Monitor;
 }
 
 void refreshSources(int preferredIndex = -1) {
     SendMessageW(g.captureSource, CB_RESETCONTENT, 0, 0);
     const CaptureKind kind = selectedKind();
-    if (kind == CaptureKind::Monitor) {
+    if (kind != CaptureKind::Window) {
         g.monitors = enumerateMonitors();
-        for (const auto& item : g.monitors)
-            SendMessageW(g.captureSource, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item.label.c_str()));
+        for (const auto& item : g.monitors) {
+            const LRESULT index = SendMessageW(g.captureSource, CB_ADDSTRING, 0,
+                reinterpret_cast<LPARAM>(item.label.c_str()));
+            if (index >= 0) SendMessageW(g.captureSource, CB_SETITEMDATA, index,
+                item.virtualDisplay ? 1 : 0);
+        }
     } else {
         g.windows = enumerateWindows(g.window);
         for (const auto& item : g.windows)
@@ -192,6 +198,8 @@ void refreshSources(int preferredIndex = -1) {
         const int index = preferredIndex >= 0 && preferredIndex < count ? preferredIndex : 0;
         SendMessageW(g.captureSource, CB_SETCURSEL, index, 0);
     }
+    g.previewFrame.clear();
+    g.previewWidth = g.previewHeight = 0;
     if (g.preview) InvalidateRect(g.preview, nullptr, TRUE);
 }
 
@@ -199,7 +207,7 @@ CaptureSource currentSource() {
     CaptureSource source;
     source.kind = selectedKind();
     const int index = static_cast<int>(SendMessageW(g.captureSource, CB_GETCURSEL, 0, 0));
-    if (source.kind == CaptureKind::Monitor && index >= 0 && index < static_cast<int>(g.monitors.size())) {
+    if (source.kind != CaptureKind::Window && index >= 0 && index < static_cast<int>(g.monitors.size())) {
         const auto& item = g.monitors[index];
         source.monitor = item.handle;
         source.bounds = item.bounds;
@@ -345,6 +353,7 @@ void updateControls() {
     EnableWindow(g.captureKind, !running);
     EnableWindow(g.captureSource, !running);
     EnableWindow(g.refresh, !running);
+    EnableWindow(GetDlgItem(g.window, 1400), !running);
     EnableWindow(g.fps, !running);
     EnableWindow(g.cursor, !running);
     EnableWindow(g.protectedMode, !running);
@@ -436,7 +445,12 @@ std::vector<unsigned char> createMessageFrame(int width, int height,
 void updatePreview() {
     if (!g.preview || !IsWindowVisible(g.window)) return;
     CaptureSource source = currentSource();
-    if (source.bounds.right <= source.bounds.left || source.bounds.bottom <= source.bounds.top) return;
+    if (source.bounds.right <= source.bounds.left || source.bounds.bottom <= source.bounds.top) {
+        g.previewFrame.clear();
+        g.previewWidth = g.previewHeight = 0;
+        InvalidateRect(g.preview, nullptr, FALSE);
+        return;
+    }
 
     const bool blocked = trayImageHidden() || protectedContentVisible(source);
     g.previewProtected = blocked;
@@ -461,6 +475,10 @@ void updatePreview() {
         g.previewWidth = width;
         g.previewHeight = height;
         g.previewLabel = source.label;
+        InvalidateRect(g.preview, nullptr, FALSE);
+    } else {
+        g.previewFrame.clear();
+        g.previewWidth = g.previewHeight = 0;
         InvalidateRect(g.preview, nullptr, FALSE);
     }
 }
@@ -734,6 +752,8 @@ void drawSmallText(HDC dc, int x, int y, const wchar_t* text, int width = 300) {
 }
 
 void createUi() {
+    addControl(L"BUTTON", L"Configurar tela virtual", BS_PUSHBUTTON,
+        284, 246, 214, 26, 1400, gFontSmall);
     g.help = addControl(L"BUTTON", L"?  Como usar", BS_PUSHBUTTON, 806, 20, 116, 38, IdHelp, gFont);
     g.start = addControl(L"BUTTON", L"Iniciar transmissão", BS_DEFPUSHBUTTON, 476, 18, 190, 42, IdStart, gFontBold);
     g.sourceName = addControl(L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL, 32, 208, 466, 34, IdSourceName, gFont);
@@ -791,10 +811,28 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         BOOL dark = TRUE;
         DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
         g.settings = loadSettings(iniPath());
+        bool missingSavedVirtual = false;
+        // Migrate the old filtered virtual-monitor index to the unified monitor list.
+        if (g.settings.captureKind == CaptureKind::VirtualMonitor) {
+            const auto monitors = enumerateMonitors();
+            int virtualIndex = 0;
+            int selectedIndex = -1;
+            for (size_t i = 0; i < monitors.size(); ++i) {
+                if (monitors[i].virtualDisplay && virtualIndex++ == g.settings.sourceIndex) {
+                    selectedIndex = static_cast<int>(i);
+                    break;
+                }
+            }
+            g.settings.captureKind = CaptureKind::Monitor;
+            // Leave the source unselected if the saved virtual display is unavailable.
+            g.settings.sourceIndex = selectedIndex;
+            missingSavedVirtual = selectedIndex < 0;
+        }
         createUi();
         SetWindowTextW(g.sourceName, g.settings.sourceName.c_str());
-        SendMessageW(g.captureKind, CB_SETCURSEL, g.settings.captureKind == CaptureKind::Window ? 1 : 0, 0);
+        SendMessageW(g.captureKind, CB_SETCURSEL, static_cast<int>(g.settings.captureKind), 0);
         refreshSources(g.settings.sourceIndex);
+        if (missingSavedVirtual) SendMessageW(g.captureSource, CB_SETCURSEL, static_cast<WPARAM>(-1), 0);
         SendMessageW(g.fps, CB_SETCURSEL, g.settings.fps == 60 ? 1 : 0, 0);
         setChecked(g.cursor, g.settings.showCursor);
         setChecked(g.settings.mode == TransmissionMode::Quick ? g.quickMode : g.protectedMode, true);
@@ -807,6 +845,11 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (g.settings.showHelpOnStart) PostMessageW(hwnd, WM_COMMAND, IdHelp, 0);
         return 0;
     }
+
+    case WM_DISPLAYCHANGE:
+        // Active capture validates monitor geometry and stops on topology changes.
+        if (!g.running.load()) refreshSources();
+        return 0;
 
     case WM_TIMER:
         if (wp == kPreviewTimer) {
@@ -827,6 +870,45 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         const int id = LOWORD(wp);
         if (id == IdCaptureKind && HIWORD(wp) == CBN_SELCHANGE) refreshSources();
         else if (id == IdCaptureSource && HIWORD(wp) == CBN_SELCHANGE) updatePreview();
+        else if (id == 1400 && !g.running.load()) {
+            const auto monitors = enumerateMonitors();
+            const bool detected = std::any_of(monitors.begin(), monitors.end(),
+                [](const MonitorSource& monitor) { return monitor.virtualDisplay; });
+            const int choice = MessageBoxW(hwnd,
+                detected ?
+                L"A tela virtual já está disponível.\n\n"
+                L"Sim: abrir as configurações de Tela do Windows para ajustar resolução e modo Estender.\n"
+                L"Não: abrir o utilitário oficial para gerenciar o driver.\n"
+                L"Cancelar: voltar." :
+                L"O pacote inclui o Virtual Driver Control original e o driver de vídeo assinado.\n\n"
+                L"Sim: abrir o utilitário como administrador. Nele, use Install Driver na seção de vídeo. "
+                L"Não é necessário instalar o driver de áudio.\n"
+                L"Não: abrir as configurações de Tela do Windows.\n"
+                L"Cancelar: voltar.\n\n"
+                L"Após instalar, use Estender, mantenha sua tela física como principal e atualize as fontes (↻).",
+                L"Configurar tela virtual", MB_YESNOCANCEL | MB_ICONINFORMATION);
+            if (choice != IDCANCEL) {
+                const bool openControl = detected ? choice == IDNO : choice == IDYES;
+                const auto control = executableDirectory() / L"virtual-display" / L"VDD Control.exe";
+                std::error_code error;
+                if (openControl && !std::filesystem::is_regular_file(control, error)) {
+                    MessageBoxW(hwnd,
+                        L"O utilitário não foi encontrado. Extraia todo o pacote do Transmitter, "
+                        L"incluindo a pasta virtual-display, e tente novamente.",
+                        L"Tela virtual", MB_OK | MB_ICONWARNING);
+                } else {
+                    const auto directory = control.parent_path();
+                    const INT_PTR result = reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd,
+                        openControl ? L"runas" : L"open",
+                        openControl ? control.c_str() : L"ms-settings:display", nullptr,
+                        openControl ? directory.c_str() : nullptr, SW_SHOWNORMAL));
+                    if (result <= 32)
+                        MessageBoxW(hwnd,
+                            L"O utilitário não foi aberto ou a autorização foi cancelada. Consulte TELA-VIRTUAL.md.",
+                            L"Tela virtual", MB_OK | MB_ICONWARNING);
+                }
+            }
+        }
         else if (id == IdRefresh) refreshSources();
         else if (id == IdStart) {
             if (g.running.load()) stopTransmission(); else startTransmission();

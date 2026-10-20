@@ -37,6 +37,34 @@ jobs:
             -OutFile $packagePath
           Expand-Archive -Path $packagePath -DestinationPath $ndiRuntimeDir -Force
 
+      - name: Preparar Virtual Driver Control original
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $ProgressPreference = "SilentlyContinue"
+          $vddZip = "$env:RUNNER_TEMP\vdd-control.zip"
+          $vddDir = "$env:RUNNER_TEMP\vdd-control"
+          Invoke-WebRequest -Uri "https://github.com/VirtualDrivers/Virtual-Display-Driver/releases/download/25.7.23/VDD.Control.25.7.23.zip" -OutFile $vddZip
+          $expected = "a701f2272e9fcf382849b24f913c6dd07597b3b1116525f2e90182f019609154"
+          if ((Get-FileHash $vddZip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
+            throw "O pacote do VDD não corresponde à versão fixada."
+          }
+          Expand-Archive -Path $vddZip -DestinationPath $vddDir -Force
+          $control = @(Get-ChildItem $vddDir -Filter "VDD Control.exe" -Recurse)
+          if ($control.Count -ne 1) { throw "VDD Control.exe ausente ou ambíguo." }
+          $signature = Get-AuthenticodeSignature $control[0].FullName
+          if ($signature.Status -ne "Valid") { throw "Assinatura do VDD Control inválida: $($signature.Status)" }
+          $catalogs = @(Get-ChildItem $control[0].DirectoryName -Filter *.cat -Recurse)
+          if ($catalogs.Count -eq 0) { throw "Catálogos dos drivers ausentes." }
+          foreach ($catalog in $catalogs) {
+            if ((Get-AuthenticodeSignature $catalog.FullName).Status -ne "Valid") {
+              throw "Assinatura inválida: $($catalog.Name)"
+            }
+          }
+          New-Item -ItemType Directory -Force -Path "dist-transmitter\virtual-display" | Out-Null
+          Copy-Item "$($control[0].DirectoryName)\*" "dist-transmitter\virtual-display" -Recurse -Force
+          Copy-Item "third_party\virtual-display\LICENSE.txt" "dist-transmitter\virtual-display\LICENSE-VIRTUAL-DISPLAY.txt"
+
       - name: Montar pacotes portáteis
         shell: pwsh
         run: |
@@ -70,6 +98,7 @@ jobs:
             $ndiDll.FullName `
             "dist-receiver\Processing.NDI.Lib.x64.dll"
 
+          Copy-Item "TELA-VIRTUAL.md" "dist-transmitter\TELA-VIRTUAL.md"
           Copy-Item "README-TESTE.txt" "dist-transmitter\LEIA-ME.txt"
           Copy-Item "README-RECEIVER-TESTE.txt" "dist-receiver\LEIA-ME.txt"
           Copy-Item "THIRD_PARTY_NOTICES.md" "dist-transmitter\AVISOS-DE-TERCEIROS.txt"
