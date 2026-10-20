@@ -14,7 +14,7 @@ namespace {
 static_assert(sizeof(vst_effect_t)==192);
 static_assert(offsetof(vst_effect_t,process_float)==120);
 static_assert(std::atomic<float>::is_always_lock_free);
-constexpr int Version=400; // 0.4.0, stable dropdowns and Receive diagnostics
+constexpr int Version=401; // 0.4.1, stable dropdowns and Receive diagnostics
 enum Parameter : std::uint32_t { Send, Source, Status, Drops, Queued, Volume, Mode, Count };
 struct Chunk {
     std::uint32_t magic{VST_FOURCC('1','B','A','2')},version{2};

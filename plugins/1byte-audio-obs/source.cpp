@@ -12,7 +12,7 @@
 
 OBS_DECLARE_MODULE()
 MODULE_EXPORT const char* obs_module_name(void) { return "1Byte Labs Audio"; }
-MODULE_EXPORT const char* obs_module_description(void) { return "Fonte de audio NDI / 1Byte Labs Audio 0.4.0"; }
+MODULE_EXPORT const char* obs_module_description(void) { return "Fonte de audio NDI / 1Byte Labs Audio 0.4.1"; }
 MODULE_EXPORT const char* obs_module_author(void) { return "1Byte Labs"; }
 
 namespace {
@@ -122,6 +122,10 @@ obs_properties_t* properties(void* data) {
             !state->audio.enabled ? "Recepcao desligada." : "Aguardando fonte/conexao NDI.";
     }
     obs_properties_add_text(props,"connection_status",status.c_str(),OBS_TEXT_INFO);
+    auto* website=obs_properties_add_button(props,"website","1bytelabs.com.br",nullptr);
+    obs_property_button_set_type(website,OBS_BUTTON_URL);
+    static char websiteUrl[]="https://1bytelabs.com.br";
+    obs_property_button_set_url(website,websiteUrl);
     return props;
 }
 }
@@ -131,6 +135,6 @@ bool obs_module_load(void) {
     info.get_name=name;info.create=create;info.destroy=destroy;info.update=update;
     info.get_defaults=defaults;info.get_properties=properties;
     obs_register_source(&info);
-    blog(LOG_INFO,"[1Byte Labs Audio] Fonte NDI 0.4.0 registrada.");
+    blog(LOG_INFO,"[1Byte Labs Audio] Fonte NDI 0.4.1 registrada.");
     return true;
 }

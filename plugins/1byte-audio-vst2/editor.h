@@ -26,7 +26,7 @@ private:
     void edit(std::uint32_t id,double value);
     EditorClient* controller_;
     NdiAudio& audio_;
-    HWND window_{},power_{},source_{},volume_{},diagnostic_{},mode_{},receiveSource_{};
+    HWND window_{},power_{},source_{},volume_{},diagnostic_{},mode_{},receiveSource_{},website_{};
     std::vector<std::string> visibleSources_;
     HFONT normal_{},small_{},title_{},number_{},comboFont_{};
     HDC bufferDc_{};

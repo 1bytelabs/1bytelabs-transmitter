@@ -1,49 +1,31 @@
-# Pacote 1Byte Labs Audio 0.4.0
+# 1Byte Labs Audio 0.4.1
 
-O instalador agora oferece VST2 Enviar/Receber e fonte nativa OBS como componentes opcionais.
+VST2 com Enviar/Receber e fonte nativa de áudio NDI para o OBS. Windows x64.
 
-**Para receber diretamente no OBS:** marque Fonte nativa OBS no instalador. Ele tenta localizar a instalacao; para portable escolha a raiz do OBS ou bin/64bit. Depois use **Fontes > + > 1Byte Labs Audio**, **Atualizar fontes**, escolha a fonte NDI e confirme. Nao precisa de microfone ou filtro VST nesse fluxo. Requer OBS 31.1+ x64.
+## Escolha como instalar
 
-O pacote OBS ZIP tambem permite copiar os arquivos na raiz de outra instalacao portable. Os arquivos ficam em obs-plugins/64bit e data/obs-plugins; o runtime NDI fica em uma subpasta exclusiva do modulo.
+- **1ByteLabs-Audio-0.4.1-Setup-x64.exe**: escolha VST2, fonte OBS ou ambos. O instalador tenta localizar o OBS e permite escolher outra instalação, incluindo portable.
+- **1ByteLabs-Audio-0.4.1-VST2-Manual-x64.zip**: somente o VST2, runtime NDI e avisos. Extraia na pasta de VST2, por padrão C:\Program Files\VSTPlugins\1Byte Labs.
+- **1ByteLabs-Audio-0.4.1-OBS-Manual-x64.zip**: somente os arquivos da fonte OBS. Extraia na raiz do OBS instalado ou portable, mantendo as pastas obs-plugins e data.
 
-# 1Byte Labs Audio VST2 0.4.0 — Enviar e Receber
+Feche OBS e REAPER antes de atualizar. O runtime NDI já acompanha os componentes.
 
-Um unico plugin Windows x64, com instalador, para REAPER e filtros VST 2.x do OBS.
+## Receber diretamente no OBS
 
-## Enviar
+Requer OBS 31.1+ x64. Em **Fontes → + → 1Byte Labs Audio**, use **Atualizar fontes**, selecione o transmissor e confirme. Não precisa de microfone ou filtro VST nesse fluxo. O volume aparece nas propriedades da fonte e no mixer do OBS.
 
-Escolha **Enviar**, selecione o numero da fonte e ligue. O fader altera apenas o audio enviado pelo NDI; a saida local permanece igual a entrada.
+## Usar o VST2
 
-## Receber
+Adicione **1Byte Labs Audio** no REAPER ou como filtro VST 2.x de uma fonte de áudio ativa do OBS. Escolha **Enviar** ou **Receber** na mesma janela.
 
-Escolha **Receber** na mesma janela. A lista de fontes NDI se atualiza automaticamente, incluindo fontes de outros PCs e fontes locais. Escolha a fonte e clique **Ligar recepcao**. O fader controla o audio recebido.
+Em Enviar, o fader altera somente o sinal NDI. Em Receber, o áudio selecionado substitui a entrada. Desligar a recepção deixa a saída silenciosa; usar o bypass do host volta a passar a entrada local.
 
-O audio recebido **substitui** a entrada do plugin. Com a recepcao desligada ou sem sinal, a saida fica silenciosa. O bypass do host volta a passar a entrada local.
+O modo, fonte, ganho e estado são armazenados pelo projeto ou pela coleção de cenas do host. Uma fonte ou instância nova começa com as opções padrão. Projetos antigos 0.2.x restauram em Enviar com seu ganho e número de fonte.
 
-No OBS: adicione o plugin em **Filtros > VST 2.x** de uma fonte de audio ativa (por exemplo, uma captura de entrada com o dispositivo silenciado antes do filtro). O OBS precisa processar essa fonte para chamar o VST; o plugin nao cria uma fonte OBS por conta propria. Evite adicionar outra captura do mesmo audio para nao duplicar o som.
+## Diagnóstico e informações
 
-No REAPER: adicione o plugin em uma track com o processamento ativo; escolha a fonte no modo Receber.
+O botão **Diagnóstico NDI** do VST2 mostra a conexão e o processamento do host. Na mensagem, Ctrl+C copia o relatório.
 
-## Buffer e sincronizacao
+O link **1bytelabs.com.br** abre o site no navegador ao ser clicado. No OBS, fica somente nas propriedades da fonte.
 
-A recepcao usa NDI FrameSync para converter a taxa de amostragem/canais para estereo na taxa do host e corrigir diferencas de relogio. O worker preenche uma fila de aproximadamente 50 ms (mais para blocos grandes); a fila e limitada a um segundo. NDI e rede acrescentam sua propria latencia. O callback do host nao carrega DLLs, chama NDI, aloca memoria ou usa mutexes.
-
-A selecao da fonte e salva pelo nome no projeto/cena. Se a fonte desaparecer, o NDI tenta reconectar. Tags de geracao impedem que audio de uma fonte anterior seja reproduzido apos trocar de fonte.
-
-## Compatibilidade e instalacao
-
-Feche OBS e REAPER antes de instalar. Use a mesma pasta VST2 da versao anterior, por padrao **C:\\Program Files\\VSTPlugins\\1Byte Labs**. O instalador inclui o runtime NDI x64 e cria a pasta quando necessario.
-
-Projetos da versao 0.2.x continuam em modo Enviar com numero, ganho e estado originais. O identificador VST2 e os seis parametros existentes foram preservados; Modo foi acrescentado como parametro 7.
-
-**Diagnostico NDI** mostra o caminho da DLL e a etapa de erro. Na mensagem, Ctrl+C copia o relatorio.
-
-## Verificacao
-
-CI Windows: testes de ABI VST2, float/double, modo Enviar, recepcao com fixture NDI, descoberta, stride planar, troca de fonte, reconexao, bypass, estado antigo/novo, ganho, fechamento do editor e liberacao dos objetos; smoke do runtime real; loopback real Send/Receive; instalacao e desinstalacao isoladas.
-
-O teste automatico de host nao substitui a validacao manual dentro do OBS/REAPER e entre dois PCs.
-
-## Ajustes 0.4.0
-
-A atualizacao da interface nao redefine selecoes enquanto os dropdowns estao abertos. O diagnostico agora inclui chamadas/blocos de audio do host, conexoes, formato NDI de entrada, frames capturados, samples entregues e faltas de buffer. Esses dados distinguem descoberta de fonte, conexao NDI, sinal de entrada e processamento do filtro. A causa de eventual silencio dentro do OBS depende desse relatorio; a correcao do dropdown por si so nao confirma a recepcao no host.
+Site: https://1bytelabs.com.br

@@ -6,6 +6,7 @@
 #include <mutex>
 #include <uxtheme.h>
 #include <commctrl.h>
+#include <shellapi.h>
 
 namespace zosma {
 namespace {
@@ -96,6 +97,8 @@ bool NativeEditor::open(HWND parent) {
     SendMessageW(volume_,TBM_SETRANGE,TRUE,MAKELPARAM(0,660));
     SendMessageW(volume_,TBM_SETPAGESIZE,0,10);
     SendMessageW(volume_,TBM_SETPOS,TRUE,600);
+    website_=CreateWindowExW(0,L"BUTTON",L"1bytelabs.com.br",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,
+        p(220),p(570),p(200),p(22),window_,reinterpret_cast<HMENU>(106),module,nullptr);
     audio_.peaks[0].exchange(0); audio_.peaks[1].exchange(0);
     lastTick_=GetTickCount64(); tick();
     SetTimer(window_,1,66,nullptr);
@@ -110,7 +113,7 @@ void NativeEditor::close() {
     }
     if(window_) {
         KillTimer(window_,1);
-        DestroyWindow(window_); window_=power_=source_=volume_=diagnostic_=mode_=receiveSource_=nullptr;
+        DestroyWindow(window_); window_=power_=source_=volume_=diagnostic_=mode_=receiveSource_=website_=nullptr;
         if(comboFont_) { DeleteObject(comboFont_); comboFont_=nullptr; }
     }
 }
@@ -182,7 +185,7 @@ void NativeEditor::paint(HDC target) {
     SetViewportExtEx(dc,client.right,client.bottom,nullptr);
     text(dc,small_,L"1BYTE LABS  /  AUDIO OVER NETWORK",28,18,480,22,Green);
     text(dc,title_,L"1Byte Labs Audio",28,44,400,42);
-    text(dc,small_,L"VST2 / 0.4.0",480,51,132,24,Muted,DT_RIGHT);
+    text(dc,small_,L"VST2 / 0.4.1",480,51,132,24,Muted,DT_RIGHT);
     rounded(dc,28,100,584,128,Card);
     const bool enabled=audio_.enabled.load(), processing=audio_.processing.load(), receive=audio_.receiveMode.load();
     const int status=audio_.status.load();
@@ -230,7 +233,6 @@ void NativeEditor::paint(HDC target) {
     const auto drops=receive ? audio_.underruns.load() : audio_.dropped.load(); wchar_t dropped[64]; std::swprintf(dropped,64,L"%llu",static_cast<unsigned long long>(drops));
     text(dc,small_,receive ? L"FALTAS DE BUFFER" : L"SAMPLES DESCARTADOS",346,498,246,20,Muted);
     text(dc,number_,dropped,346,520,246,30,drops ? Amber : Green);
-    text(dc,small_,receive ? L"Receber substitui a entrada. FrameSync adapta o audio ao host." : L"Modo Enviar / O fader altera so o NDI. Fila nao e latencia total.",28,570,584,22,Muted);
     SetMapMode(dc,MM_TEXT);
     BitBlt(target,0,0,client.right,client.bottom,dc,0,0,SRCCOPY);
 }
@@ -242,6 +244,9 @@ LRESULT CALLBACK NativeEditor::windowProc(HWND window,UINT msg,WPARAM wp,LPARAM 
     }
     if(!self) return DefWindowProcW(window,msg,wp,lp);
     switch(msg) {
+    case WM_SETCURSOR:
+        if(reinterpret_cast<HWND>(wp)==self->website_) { SetCursor(LoadCursorW(nullptr,IDC_HAND)); return TRUE; }
+        break;
     case WM_ERASEBKGND: return 1;
     case WM_TIMER: if(wp==1) self->tick(); return 0;
     case WM_HSCROLL:
@@ -269,6 +274,10 @@ LRESULT CALLBACK NativeEditor::windowProc(HWND window,UINT msg,WPARAM wp,LPARAM 
     }
     case WM_PAINT: { PAINTSTRUCT ps{}; auto dc=BeginPaint(window,&ps); self->paint(dc); EndPaint(window,&ps); return 0; }
     case WM_COMMAND:
+        if(LOWORD(wp)==106 && HIWORD(wp)==BN_CLICKED) {
+            ShellExecuteW(window,L"open",L"https://1bytelabs.com.br",nullptr,nullptr,SW_SHOWNORMAL);
+            return 0;
+        }
         if(LOWORD(wp)==104 && HIWORD(wp)==CBN_SELCHANGE) self->edit(6,SendMessageW(self->mode_,CB_GETCURSEL,0,0)==1 ? 1. : 0.);
         if(LOWORD(wp)==105 && HIWORD(wp)==CBN_SELCHANGE) {
             const auto selected=SendMessageW(self->receiveSource_,CB_GETCURSEL,0,0);
@@ -278,7 +287,7 @@ LRESULT CALLBACK NativeEditor::windowProc(HWND window,UINT msg,WPARAM wp,LPARAM 
         }
         if(LOWORD(wp)==103 && HIWORD(wp)==BN_CLICKED) {
             wchar_t host[32768]{}; GetModuleFileNameW(nullptr,host,32768);
-            const auto report=L"1Byte Labs Audio VST2 0.4.0 / Windows x64\r\nHost: "+
+            const auto report=L"1Byte Labs Audio VST2 0.4.1 / Windows x64\r\nHost: "+
                 std::wstring(host)+L"\r\nFonte selecionada: "+wide(self->audio_.selectedSource())+L"\r\n\r\n"+self->audio_.diagnostic();
             MessageBoxW(window,report.c_str(),L"Diagnostico NDI",MB_OK|MB_ICONINFORMATION);
         }
@@ -290,6 +299,15 @@ LRESULT CALLBACK NativeEditor::windowProc(HWND window,UINT msg,WPARAM wp,LPARAM 
         return 0;
     case WM_DRAWITEM: {
         auto* item=reinterpret_cast<DRAWITEMSTRUCT*>(lp);
+        if(item->CtlID==106) {
+            fill(item->hDC,item->rcItem,Bg);
+            text(item->hDC,self->small_,L"1bytelabs.com.br",0,0,
+                item->rcItem.right,item->rcItem.bottom,Green,DT_CENTER);
+            if(item->itemState&ODS_FOCUS) {
+                RECT focus=item->rcItem; InflateRect(&focus,-2,-2); DrawFocusRect(item->hDC,&focus);
+            }
+            return TRUE;
+        }
         if(item->CtlID!=100) break;
         const bool on=self->audio_.enabled.load();
         auto color=on ? RGB(39,84,72) : Green;

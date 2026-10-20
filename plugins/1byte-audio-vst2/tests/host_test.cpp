@@ -1,3 +1,4 @@
+#include <string>
 #include <cstdint>
 #include <windows.h>
 #include <commctrl.h>
@@ -141,6 +142,10 @@ int main(int argc,char** argv) {
         require(rect && rect->right==640 && rect->bottom==604,"editor dimensions");
         require(p->control(p,VST_EFFECT_OPCODE_EDITOR_OPEN,0,0,parent,0)==1,"attach native editor");
         auto child=FindWindowExW(parent,nullptr,L"OneByteAudioVst2Editor_0200",nullptr);require(child!=nullptr,"editor child");
+        auto website=GetDlgItem(child,106);
+        require(website!=nullptr,"website link is present in editor footer");
+        wchar_t websiteText[64]{};GetWindowTextW(website,websiteText,64);
+        require(std::wstring(websiteText)==L"1bytelabs.com.br","website footer caption");
         SendMessageW(GetDlgItem(child,102),TBM_SETPOS,TRUE,480);
         SendMessageW(child,WM_HSCROLL,TB_THUMBPOSITION,reinterpret_cast<LPARAM>(GetDlgItem(child,102)));
         require(std::abs(p->get_parameter(p,5)-48.f/66.f)<.00001,"UI gain and host automation");

@@ -1,4 +1,4 @@
-# 1Byte Labs Audio — Fonte nativa OBS 0.4.0
+# 1Byte Labs Audio — Fonte nativa OBS 0.4.1
 
 Windows x64, OBS 31.1 ou posterior. Compilado com headers/libobs oficiais 31.1.1; o CI carrega o modulo no libobs oficial 32.2.2 e recebe um sinal NDI real.
 
@@ -19,7 +19,9 @@ Feche o OBS e o REAPER antes de instalar ou desinstalar. A instalacao nao muda c
 - obs-plugins/64bit/1byte-audio-ndi/Processing.NDI.Lib.x64.dll
 - data/obs-plugins/1byte-labs-audio/README.md
 
-Para varias instalacoes portables, use o pacote OBS ZIP e copie seu conteudo na raiz de cada instalacao; nao misture isso com os arquivos VST2.
+Para instalar manualmente em OBS instalado ou portable, use **1ByteLabs-Audio-0.4.1-OBS-Manual-x64.zip** e extraia as pastas obs-plugins e data na raiz do OBS. Esse ZIP nao inclui VST2.
+
+O link **1bytelabs.com.br** fica nas propriedades da fonte e abre https://1bytelabs.com.br no navegador. Ele nao aparece na imagem da transmissao.
 
 ## Desenvolvimento
 

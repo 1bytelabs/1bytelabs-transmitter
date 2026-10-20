@@ -66,8 +66,29 @@ jobs:
           Copy-Item plugins/1byte-audio-obs/README.md dist-audio/obs/data/obs-plugins/1byte-labs-audio/README.md
           Copy-Item THIRD_PARTY_NOTICES.md dist-audio/obs/data/obs-plugins/1byte-labs-audio/AVISOS-NDI.md
           Copy-Item plugins/1byte-audio-obs/LICENSE dist-audio/obs/data/obs-plugins/1byte-labs-audio/LICENSE.txt
-          Compress-Archive dist-audio/* 1ByteLabs-Audio-0.4.0-Windows-x64.zip -Force
-          Compress-Archive dist-audio/obs/* 1ByteLabs-Audio-0.4.0-OBS-Portable-x64.zip -Force
+          New-Item -ItemType Directory -Force dist-vst2-manual | Out-Null
+          Copy-Item 'dist-audio/1Byte Labs Audio.dll' dist-vst2-manual
+          Copy-Item dist-audio/Processing.NDI.Lib.x64.dll dist-vst2-manual
+          Copy-Item dist-audio/AVISOS-NDI.md dist-vst2-manual
+          Copy-Item dist-audio/LICENCA-ABI-VST2.txt dist-vst2-manual
+          Copy-Item plugins/1byte-audio-vst2/MANUAL.md dist-vst2-manual/LEIA-ME-VST2.md
+          Copy-Item plugins/1byte-audio-obs/README.md dist-audio/obs/LEIA-ME-1ByteLabs-Audio-OBS.md
+          Compress-Archive dist-vst2-manual/* 1ByteLabs-Audio-0.4.1-VST2-Manual-x64.zip -Force
+          Compress-Archive dist-audio/obs/* 1ByteLabs-Audio-0.4.1-OBS-Manual-x64.zip -Force
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $vstZip = [IO.Compression.ZipFile]::OpenRead("$pwd/1ByteLabs-Audio-0.4.1-VST2-Manual-x64.zip")
+          try {
+            $entries = @($vstZip.Entries | ForEach-Object { $_.FullName.Replace('\','/') })
+            if ($entries -notcontains '1Byte Labs Audio.dll' -or $entries -notcontains 'Processing.NDI.Lib.x64.dll') { throw 'VST2 manual binaries missing' }
+            if ($entries | Where-Object { $_.Contains('/') }) { throw 'VST2 ZIP unexpectedly contains a directory/component' }
+          } finally { $vstZip.Dispose() }
+          $obsZip = [IO.Compression.ZipFile]::OpenRead("$pwd/1ByteLabs-Audio-0.4.1-OBS-Manual-x64.zip")
+          try {
+            $entries = @($obsZip.Entries | ForEach-Object { $_.FullName.Replace('\','/') })
+            if ($entries -notcontains 'obs-plugins/64bit/1byte-labs-audio.dll') { throw 'OBS manual module missing' }
+            if ($entries -notcontains 'obs-plugins/64bit/1byte-audio-ndi/Processing.NDI.Lib.x64.dll') { throw 'OBS manual runtime missing' }
+            if ($entries | Where-Object { $_.EndsWith('1Byte Labs Audio.dll') }) { throw 'OBS ZIP unexpectedly contains VST2' }
+          } finally { $obsZip.Dispose() }
       - name: Test packaged VST2 and real NDI loopback
         shell: pwsh
         run: |
@@ -144,14 +165,19 @@ jobs:
           $process = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/COMPONENTS=obs',"/DIR=`"$badApp`"","/OBSDIR=`"$root/not-an-obs`"") -PassThru
           if ((Wait-Setup $process 'invalid OBS path') -eq 0) { throw 'Invalid OBS directory was accepted' }
           if (Test-Path "$root/not-an-obs/obs-plugins") { throw 'Invalid OBS directory was modified' }
+      - name: Assemble three clearly named download files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-out | Out-Null
+          Copy-Item installer-out/*.exe release-out
+          Copy-Item 1ByteLabs-Audio-0.4.1-VST2-Manual-x64.zip release-out
+          Copy-Item 1ByteLabs-Audio-0.4.1-OBS-Manual-x64.zip release-out
+          if ((Get-ChildItem release-out -File).Count -ne 3) { throw 'Expected installer plus two manual ZIPs' }
       - name: Upload components and installer
         uses: actions/upload-artifact@v4
         with:
-          name: 1ByteLabs-Audio-0.4.0-Windows-x64
-          path: |
-            1ByteLabs-Audio-0.4.0-Windows-x64.zip
-            1ByteLabs-Audio-0.4.0-OBS-Portable-x64.zip
-            installer-out/*.exe
+          name: 1ByteLabs-Audio-0.4.1-Windows-x64
+          path: release-out/*
           if-no-files-found: error
       - name: Upload test report
         if: always()

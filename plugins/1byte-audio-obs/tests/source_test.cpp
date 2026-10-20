@@ -36,6 +36,11 @@ int main(int argc,char** argv) {
     obs_data_set_bool(settings,"enabled",true);
     auto* source=obs_source_create("onebyte_ndi_audio","1Byte native source test",settings,nullptr);
     require(source!=nullptr,"create source without a microphone or VST filter");
+    auto* initialProperties=obs_source_properties(source);
+    auto* website=obs_properties_get(initialProperties,"website");
+    require(website && obs_property_button_type(website)==OBS_BUTTON_URL,"website is a native OBS URL button");
+    require(std::string(obs_property_button_url(website))=="https://1bytelabs.com.br","OBS website URL");
+    obs_properties_destroy(initialProperties);
     Capture received;
     obs_source_add_audio_capture_callback(source,capture,&received);
     obs_source_inc_active(source);

@@ -7,7 +7,7 @@
 [Setup]
 AppId={{6472EC74-6416-4649-844F-C1646CA170CF}
 AppName=1Byte Labs Audio
-AppVersion=0.4.0
+AppVersion=0.4.1
 AppPublisher=1Byte Labs
 AppPublisherURL=https://1bytelabs.com.br
 DefaultDirName={autopf}\1Byte Labs Audio
@@ -17,7 +17,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 OutputDir={#OutputDir}
-OutputBaseFilename=1ByteLabs-Audio-0.4.0-Setup-x64
+OutputBaseFilename=1ByteLabs-Audio-0.4.1-Setup-x64
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
