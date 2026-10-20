@@ -1,0 +1,190 @@
+name: 1Byte Labs Audio - VST2 and native OBS
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/1byte-send-vst2]
+    paths: ['plugins/1byte-audio-vst2/**', 'plugins/1byte-audio-obs/**', 'plugins/zosma-send/**', '.github/workflows/build-audio-vst2.yml', 'third_party/ndi/include/**']
+  pull_request:
+    branches: [feature/zosma-send-vst3]
+    paths: ['plugins/1byte-audio-vst2/**', 'plugins/1byte-audio-obs/**', '.github/workflows/build-audio-vst2.yml']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure and build VST2
+        shell: pwsh
+        run: |
+          cmake -S plugins/1byte-audio-vst2 -B build-vst2 -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'VST2 configure failed' }
+          cmake --build build-vst2 --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'VST2 build failed' }
+      - name: Test VST2 host and transport
+        run: ctest --test-dir build-vst2 -C Release --output-on-failure
+      - name: Prepare official libobs SDK through pinned OBS plugin template
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git clone https://github.com/obsproject/obs-plugintemplate.git .obs-template
+          if ($LASTEXITCODE -ne 0) { throw 'OBS template clone failed' }
+          git -C .obs-template checkout 3e7d7ac3b5342cd7d9b88890b9c70b472d1520fc
+          if ($LASTEXITCODE -ne 0) { throw 'OBS template pin unavailable' }
+          cmake -S .obs-template -B build-obs-sdk -A x64 -DENABLE_QT=OFF -DENABLE_FRONTEND_API=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'Official OBS SDK bootstrap failed' }
+      - name: Build native OBS source and libobs integration test
+        shell: pwsh
+        run: |
+          $prefix = "$pwd/.obs-template/.deps;$pwd/.obs-template/.deps/obs-deps-2025-07-11-x64;$pwd/.obs-template/.deps/obs-deps-qt6-2025-07-11-x64"
+          cmake -S plugins/1byte-audio-obs -B build-obs-source -A x64 "-DCMAKE_PREFIX_PATH=$prefix"
+          if ($LASTEXITCODE -ne 0) { throw 'OBS source configure failed' }
+          cmake --build build-obs-source --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'OBS source build failed' }
+      - name: Package real NDI runtime and both components
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtimeZip = Join-Path $env:RUNNER_TEMP 'ndi-runtime.zip'
+          Invoke-WebRequest 'https://github.com/1bytelabs/1bytelabs-transmitter/releases/download/v0.3.1-beta/Zosma-Transmitter-v0.3.1-beta-Windows-x64.zip' -OutFile $runtimeZip
+          $runtimeDir = Join-Path $env:RUNNER_TEMP 'ndi-runtime-real'
+          Expand-Archive $runtimeZip $runtimeDir -Force
+          $dll = Get-ChildItem $runtimeDir -Filter Processing.NDI.Lib.x64.dll -Recurse | Select-Object -First 1
+          if (-not $dll) { throw 'NDI runtime not found' }
+          New-Item -ItemType Directory -Force dist-audio | Out-Null
+          Copy-Item 'build-vst2/Release/1Byte Labs Audio.dll' dist-audio
+          Copy-Item $dll.FullName dist-audio
+          if ((Get-FileHash (Join-Path dist-audio $dll.Name)).Hash -ne (Get-FileHash $dll.FullName).Hash) { throw 'Runtime hash mismatch' }
+          Copy-Item plugins/1byte-audio-vst2/README.md dist-audio/LEIA-ME.md
+          Copy-Item THIRD_PARTY_NOTICES.md dist-audio/AVISOS-NDI.md
+          Copy-Item build-vst2/_deps/vst2abi-src/LICENSE dist-audio/LICENCA-ABI-VST2.txt
+          New-Item -ItemType Directory -Force dist-audio/obs/obs-plugins/64bit/1byte-audio-ndi | Out-Null
+          New-Item -ItemType Directory -Force dist-audio/obs/data/obs-plugins/1byte-labs-audio | Out-Null
+          Copy-Item build-obs-source/Release/1byte-labs-audio.dll dist-audio/obs/obs-plugins/64bit
+          Copy-Item $dll.FullName dist-audio/obs/obs-plugins/64bit/1byte-audio-ndi
+          Copy-Item plugins/1byte-audio-obs/README.md dist-audio/obs/data/obs-plugins/1byte-labs-audio/README.md
+          Copy-Item THIRD_PARTY_NOTICES.md dist-audio/obs/data/obs-plugins/1byte-labs-audio/AVISOS-NDI.md
+          Copy-Item plugins/1byte-audio-obs/LICENSE dist-audio/obs/data/obs-plugins/1byte-labs-audio/LICENSE.txt
+          New-Item -ItemType Directory -Force dist-vst2-manual | Out-Null
+          Copy-Item 'dist-audio/1Byte Labs Audio.dll' dist-vst2-manual
+          Copy-Item dist-audio/Processing.NDI.Lib.x64.dll dist-vst2-manual
+          Copy-Item dist-audio/AVISOS-NDI.md dist-vst2-manual
+          Copy-Item dist-audio/LICENCA-ABI-VST2.txt dist-vst2-manual
+          Copy-Item plugins/1byte-audio-vst2/MANUAL.md dist-vst2-manual/LEIA-ME-VST2.md
+          Copy-Item plugins/1byte-audio-obs/README.md dist-audio/obs/LEIA-ME-1ByteLabs-Audio-OBS.md
+          Compress-Archive dist-vst2-manual/* 1ByteLabs-Audio-0.4.1-VST2-Manual-x64.zip -Force
+          Compress-Archive dist-audio/obs/* 1ByteLabs-Audio-0.4.1-OBS-Manual-x64.zip -Force
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $vstZip = [IO.Compression.ZipFile]::OpenRead("$pwd/1ByteLabs-Audio-0.4.1-VST2-Manual-x64.zip")
+          try {
+            $entries = @($vstZip.Entries | ForEach-Object { $_.FullName.Replace('\','/') })
+            if ($entries -notcontains '1Byte Labs Audio.dll' -or $entries -notcontains 'Processing.NDI.Lib.x64.dll') { throw 'VST2 manual binaries missing' }
+            if ($entries | Where-Object { $_.Contains('/') }) { throw 'VST2 ZIP unexpectedly contains a directory/component' }
+          } finally { $vstZip.Dispose() }
+          $obsZip = [IO.Compression.ZipFile]::OpenRead("$pwd/1ByteLabs-Audio-0.4.1-OBS-Manual-x64.zip")
+          try {
+            $entries = @($obsZip.Entries | ForEach-Object { $_.FullName.Replace('\','/') })
+            if ($entries -notcontains 'obs-plugins/64bit/1byte-labs-audio.dll') { throw 'OBS manual module missing' }
+            if ($entries -notcontains 'obs-plugins/64bit/1byte-audio-ndi/Processing.NDI.Lib.x64.dll') { throw 'OBS manual runtime missing' }
+            if ($entries | Where-Object { $_.EndsWith('1Byte Labs Audio.dll') }) { throw 'OBS ZIP unexpectedly contains VST2' }
+          } finally { $obsZip.Dispose() }
+      - name: Test packaged VST2 and real NDI loopback
+        shell: pwsh
+        run: |
+          & 'build-vst2/Release/vst2-host-test.exe' "$pwd/dist-audio/1Byte Labs Audio.dll" --real
+          if ($LASTEXITCODE -ne 0) { throw 'Real VST2 runtime test failed' }
+          $loopbackDir = Join-Path $env:RUNNER_TEMP '1byte-real-ndi-loopback'
+          New-Item -ItemType Directory -Force $loopbackDir | Out-Null
+          Copy-Item build-vst2/Release/vst2-receive-loopback.exe $loopbackDir
+          Copy-Item dist-audio/Processing.NDI.Lib.x64.dll $loopbackDir
+          & (Join-Path $loopbackDir 'vst2-receive-loopback.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'Real NDI receive loopback failed' }
+      - name: Test native source with official OBS runtime and real NDI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $obsZip = Join-Path $env:RUNNER_TEMP 'obs-runtime.zip'
+          Invoke-WebRequest 'https://github.com/obsproject/obs-studio/releases/download/32.2.2/OBS-Studio-32.2.2-Windows-x64.zip' -OutFile $obsZip
+          Expand-Archive $obsZip .obs-runtime -Force
+          $obsExe = Get-ChildItem .obs-runtime -Filter obs64.exe -Recurse | Select-Object -First 1
+          if (-not $obsExe) { throw 'Official OBS executable missing' }
+          $obsBin = $obsExe.Directory.FullName
+          $obsRoot = Split-Path (Split-Path $obsBin)
+          "OBS_RUNTIME_ROOT=$obsRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Copy-Item build-obs-source/Release/obs-source-test.exe $obsBin
+          New-Item -ItemType Directory -Force (Join-Path $obsBin '1byte-audio-ndi') | Out-Null
+          Copy-Item dist-audio/Processing.NDI.Lib.x64.dll (Join-Path $obsBin '1byte-audio-ndi')
+          & (Join-Path $obsBin 'obs-source-test.exe') "$pwd/dist-audio/obs/obs-plugins/64bit/1byte-labs-audio.dll" "$pwd/dist-audio/obs/data/obs-plugins/1byte-labs-audio"
+          if ($LASTEXITCODE -ne 0) { throw 'Native libobs/NDI integration failed' }
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $compiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          & $compiler "/DStageDir=$pwd\dist-audio" "/DOutputDir=$pwd\installer-out" plugins/1byte-audio-vst2/installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+      - name: Test combined, VST-only and portable OBS-only installations
+        timeout-minutes: 4
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Wait-Setup($process, $label) {
+            if (-not $process.WaitForExit(45000)) {
+              Stop-Process -Id $process.Id -Force
+              throw "Installer timed out: $label"
+            }
+            $process.Refresh()
+            return $process.ExitCode
+          }
+          $root = Join-Path $env:RUNNER_TEMP '1byte-installer-components'
+          $setup = (Get-ChildItem installer-out -Filter '*.exe' | Select-Object -First 1).FullName
+          foreach ($selection in @('vst,obs','vst','obs')) {
+            Write-Host "Testing installer components: $selection"
+            $case = $selection.Replace(',','-')
+            $testRoot = Join-Path $root $case
+            $appDir = Join-Path $testRoot 'app'
+            $vstDir = Join-Path $testRoot 'VSTPlugins'
+            $obsDir = Join-Path $testRoot 'OBS Portable'
+            New-Item -ItemType Directory -Force "$obsDir/bin/64bit" | Out-Null
+            Copy-Item "$env:OBS_RUNTIME_ROOT/bin/64bit/obs64.exe" "$obsDir/bin/64bit"
+            Set-Content "$obsDir/keep.txt" 'Must survive uninstall'
+            $obsArgument = if ($selection -eq 'obs') { "$obsDir/bin/64bit" } else { $obsDir }
+            $process = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/COMPONENTS=$selection","/DIR=`"$appDir`"","/VSTDIR=`"$vstDir`"","/OBSDIR=`"$obsArgument`"") -PassThru
+            if ((Wait-Setup $process "install $selection") -ne 0) { throw "Install failed: $selection" }
+            $wantVst = $selection.Contains('vst')
+            $wantObs = $selection.Contains('obs')
+            if ((Test-Path "$vstDir/1Byte Labs Audio.dll") -ne $wantVst) { throw "VST component mismatch: $selection" }
+            if ((Test-Path "$obsDir/obs-plugins/64bit/1byte-labs-audio.dll") -ne $wantObs) { throw "OBS component mismatch: $selection" }
+            if ($wantObs -and -not (Test-Path "$obsDir/obs-plugins/64bit/1byte-audio-ndi/Processing.NDI.Lib.x64.dll")) { throw 'OBS runtime missing' }
+            $process = Start-Process "$appDir/unins000.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
+            if ((Wait-Setup $process "uninstall $selection") -ne 0) { throw 'Uninstaller failed' }
+            if ((Test-Path "$vstDir/1Byte Labs Audio.dll") -or (Test-Path "$obsDir/obs-plugins/64bit/1byte-labs-audio.dll")) { throw 'Owned plugin not removed' }
+            if (-not (Test-Path "$obsDir/keep.txt") -or -not (Test-Path "$obsDir/bin/64bit/obs64.exe")) { throw 'Unrelated OBS files removed' }
+          }
+          $badApp = Join-Path $root 'bad-app'
+          $process = Start-Process $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/COMPONENTS=obs',"/DIR=`"$badApp`"","/OBSDIR=`"$root/not-an-obs`"") -PassThru
+          if ((Wait-Setup $process 'invalid OBS path') -eq 0) { throw 'Invalid OBS directory was accepted' }
+          if (Test-Path "$root/not-an-obs/obs-plugins") { throw 'Invalid OBS directory was modified' }
+      - name: Assemble three clearly named download files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-out | Out-Null
+          Copy-Item installer-out/*.exe release-out
+          Copy-Item 1ByteLabs-Audio-0.4.1-VST2-Manual-x64.zip release-out
+          Copy-Item 1ByteLabs-Audio-0.4.1-OBS-Manual-x64.zip release-out
+          if ((Get-ChildItem release-out -File).Count -ne 3) { throw 'Expected installer plus two manual ZIPs' }
+      - name: Upload components and installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1ByteLabs-Audio-0.4.1-Windows-x64
+          path: release-out/*
+          if-no-files-found: error
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1ByteLabs-Audio-test-report
+          path: |
+            build-vst2/Testing/Temporary/LastTest.log
+            build-vst2/vst2-editor-preview.bmp
+          if-no-files-found: ignore

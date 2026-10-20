@@ -1,6 +1,8 @@
 #pragma once
 #include "audio_queue.h"
 #include <thread>
+#include <mutex>
+#include <string>
 
 namespace zosma {
 class NdiAudio {
@@ -9,6 +11,8 @@ public:
     void prepare(int sampleRate);
     void start();
     void stop();
+    // Called only by UI/tests, never by the host audio callback.
+    std::wstring diagnostic() const;
     AudioQueue queue;
     std::atomic_bool enabled{false};
     std::atomic_bool processing{false};
@@ -21,6 +25,8 @@ public:
     std::atomic<float> sendDb{0.f};
 private:
     void run();
+    mutable std::mutex diagnosticMutex_;
+    std::wstring diagnostic_{L"NDI ainda nao foi iniciado."};
     int sampleRate_{48000};
     std::atomic_bool stopping_{false};
     std::thread worker_;
