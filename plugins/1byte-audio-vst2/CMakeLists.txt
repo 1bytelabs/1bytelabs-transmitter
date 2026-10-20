@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(OneByteAudioVst2 VERSION 0.3.1 LANGUAGES CXX)
+project(OneByteAudioVst2 VERSION 0.4.0 LANGUAGES CXX)
 include(CTest)
 find_package(Threads REQUIRED)
 set(SEND_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../zosma-send")

@@ -1,4 +1,12 @@
-# 1Byte Labs Audio VST2 0.3.1 — Enviar e Receber
+# Pacote 1Byte Labs Audio 0.4.0
+
+O instalador agora oferece VST2 Enviar/Receber e fonte nativa OBS como componentes opcionais.
+
+**Para receber diretamente no OBS:** marque Fonte nativa OBS no instalador. Ele tenta localizar a instalacao; para portable escolha a raiz do OBS ou bin/64bit. Depois use **Fontes > + > 1Byte Labs Audio**, **Atualizar fontes**, escolha a fonte NDI e confirme. Nao precisa de microfone ou filtro VST nesse fluxo. Requer OBS 31.1+ x64.
+
+O pacote OBS ZIP tambem permite copiar os arquivos na raiz de outra instalacao portable. Os arquivos ficam em obs-plugins/64bit e data/obs-plugins; o runtime NDI fica em uma subpasta exclusiva do modulo.
+
+# 1Byte Labs Audio VST2 0.4.0 — Enviar e Receber
 
 Um unico plugin Windows x64, com instalador, para REAPER e filtros VST 2.x do OBS.
 
@@ -36,6 +44,6 @@ CI Windows: testes de ABI VST2, float/double, modo Enviar, recepcao com fixture 
 
 O teste automatico de host nao substitui a validacao manual dentro do OBS/REAPER e entre dois PCs.
 
-## Ajustes 0.3.1
+## Ajustes 0.4.0
 
 A atualizacao da interface nao redefine selecoes enquanto os dropdowns estao abertos. O diagnostico agora inclui chamadas/blocos de audio do host, conexoes, formato NDI de entrada, frames capturados, samples entregues e faltas de buffer. Esses dados distinguem descoberta de fonte, conexao NDI, sinal de entrada e processamento do filtro. A causa de eventual silencio dentro do OBS depende desse relatorio; a correcao do dropdown por si so nao confirma a recepcao no host.

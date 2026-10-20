@@ -38,7 +38,11 @@ struct Runtime {
         if (!GetModuleFileNameW(own, path, 32768)) {
             fail(L"Falha ao obter o caminho do plugin",GetLastError(),L""); return nullptr;
         }
-        const auto dll = std::filesystem::path(path).parent_path() / L"Processing.NDI.Lib.x64.dll";
+        auto runtimeDir=std::filesystem::path(path).parent_path();
+#ifdef ONEBYTE_NDI_SUBDIR
+        runtimeDir/=L"1byte-audio-ndi";
+#endif
+        const auto dll=runtimeDir / L"Processing.NDI.Lib.x64.dll";
         if(GetFileAttributesW(dll.c_str())==INVALID_FILE_ATTRIBUTES) {
             fail(L"DLL NDI ausente ou inacessivel",GetLastError(),dll.wstring()); return nullptr;
         }

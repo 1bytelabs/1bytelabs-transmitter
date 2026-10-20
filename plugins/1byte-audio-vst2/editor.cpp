@@ -182,7 +182,7 @@ void NativeEditor::paint(HDC target) {
     SetViewportExtEx(dc,client.right,client.bottom,nullptr);
     text(dc,small_,L"1BYTE LABS  /  AUDIO OVER NETWORK",28,18,480,22,Green);
     text(dc,title_,L"1Byte Labs Audio",28,44,400,42);
-    text(dc,small_,L"VST2 / 0.3.1",480,51,132,24,Muted,DT_RIGHT);
+    text(dc,small_,L"VST2 / 0.4.0",480,51,132,24,Muted,DT_RIGHT);
     rounded(dc,28,100,584,128,Card);
     const bool enabled=audio_.enabled.load(), processing=audio_.processing.load(), receive=audio_.receiveMode.load();
     const int status=audio_.status.load();
@@ -278,7 +278,7 @@ LRESULT CALLBACK NativeEditor::windowProc(HWND window,UINT msg,WPARAM wp,LPARAM 
         }
         if(LOWORD(wp)==103 && HIWORD(wp)==BN_CLICKED) {
             wchar_t host[32768]{}; GetModuleFileNameW(nullptr,host,32768);
-            const auto report=L"1Byte Labs Audio VST2 0.3.1 / Windows x64\r\nHost: "+
+            const auto report=L"1Byte Labs Audio VST2 0.4.0 / Windows x64\r\nHost: "+
                 std::wstring(host)+L"\r\nFonte selecionada: "+wide(self->audio_.selectedSource())+L"\r\n\r\n"+self->audio_.diagnostic();
             MessageBoxW(window,report.c_str(),L"Diagnostico NDI",MB_OK|MB_ICONINFORMATION);
         }
