@@ -23,7 +23,8 @@ void capture(NDIlib_send_instance_t,const NDIlib_audio_frame_v3_t* frame) {
     leftPeak=peaks[0];rightPeak=peaks[1];lastRate=frame->sample_rate;++frames;
 }
 }
-extern "C" __declspec(dllexport) const NDIlib_v6* NDIlib_v6_load() {
+// Inherit the C linkage declared by the NDI header; exported by linker flag.
+const NDIlib_v6* NDIlib_v6_load() {
     static const NDIlib_v6 api=[] {
         NDIlib_v6 table{};table.initialize=initialize;table.destroy=destroy;
         table.send_create=create;table.send_destroy=close;
