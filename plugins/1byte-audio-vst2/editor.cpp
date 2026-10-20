@@ -120,9 +120,14 @@ void NativeEditor::edit(std::uint32_t id,double value) {
 }
 void NativeEditor::tick() {
     const bool receive=audio_.receiveMode.load();
-    SendMessageW(mode_,CB_SETCURSEL,receive ? 1 : 0,0);
-    ShowWindow(source_,receive ? SW_HIDE : SW_SHOW);
-    ShowWindow(receiveSource_,receive ? SW_SHOW : SW_HIDE);
+    // Never reset a combo's tentative mouse selection while its list is open.
+    if(!SendMessageW(mode_,CB_GETDROPPEDSTATE,0,0) &&
+       SendMessageW(mode_,CB_GETCURSEL,0,0)!=(receive ? 1 : 0))
+        SendMessageW(mode_,CB_SETCURSEL,receive ? 1 : 0,0);
+    const bool sourceVisible=(GetWindowLongPtrW(source_,GWL_STYLE)&WS_VISIBLE)!=0;
+    const bool receiveVisible=(GetWindowLongPtrW(receiveSource_,GWL_STYLE)&WS_VISIBLE)!=0;
+    if(sourceVisible==receive) ShowWindow(source_,receive ? SW_HIDE : SW_SHOW);
+    if(receiveVisible!=receive) ShowWindow(receiveSource_,receive ? SW_SHOW : SW_HIDE);
     if(receive && !SendMessageW(receiveSource_,CB_GETDROPPEDSTATE,0,0)) {
         auto names=audio_.sources(); const auto selected=audio_.selectedSource();
         if(!selected.empty() && std::find(names.begin(),names.end(),selected)==names.end()) names.push_back(selected);
@@ -135,7 +140,9 @@ void NativeEditor::tick() {
             }
         }
         const auto found=std::find(visibleSources_.begin(),visibleSources_.end(),selected);
-        SendMessageW(receiveSource_,CB_SETCURSEL,found==visibleSources_.end() ? 0 : 1+std::distance(visibleSources_.begin(),found),0);
+        const auto desired=found==visibleSources_.end() ? 0 : 1+std::distance(visibleSources_.begin(),found);
+        if(SendMessageW(receiveSource_,CB_GETCURSEL,0,0)!=desired)
+            SendMessageW(receiveSource_,CB_SETCURSEL,desired,0);
     }
     const auto now=GetTickCount64();
     const float decay=static_cast<float>(std::pow(.12,std::min<ULONGLONG>(now-lastTick_,1000)/1000.));
@@ -175,7 +182,7 @@ void NativeEditor::paint(HDC target) {
     SetViewportExtEx(dc,client.right,client.bottom,nullptr);
     text(dc,small_,L"1BYTE LABS  /  AUDIO OVER NETWORK",28,18,480,22,Green);
     text(dc,title_,L"1Byte Labs Audio",28,44,400,42);
-    text(dc,small_,L"VST2 / 0.3.0",480,51,132,24,Muted,DT_RIGHT);
+    text(dc,small_,L"VST2 / 0.3.1",480,51,132,24,Muted,DT_RIGHT);
     rounded(dc,28,100,584,128,Card);
     const bool enabled=audio_.enabled.load(), processing=audio_.processing.load(), receive=audio_.receiveMode.load();
     const int status=audio_.status.load();
@@ -271,8 +278,8 @@ LRESULT CALLBACK NativeEditor::windowProc(HWND window,UINT msg,WPARAM wp,LPARAM 
         }
         if(LOWORD(wp)==103 && HIWORD(wp)==BN_CLICKED) {
             wchar_t host[32768]{}; GetModuleFileNameW(nullptr,host,32768);
-            const auto report=L"1Byte Labs Audio VST2 0.3.0 / Windows x64\r\nHost: "+
-                std::wstring(host)+L"\r\n\r\n"+self->audio_.diagnostic();
+            const auto report=L"1Byte Labs Audio VST2 0.3.1 / Windows x64\r\nHost: "+
+                std::wstring(host)+L"\r\nFonte selecionada: "+wide(self->audio_.selectedSource())+L"\r\n\r\n"+self->audio_.diagnostic();
             MessageBoxW(window,report.c_str(),L"Diagnostico NDI",MB_OK|MB_ICONINFORMATION);
         }
         if(LOWORD(wp)==100 && HIWORD(wp)==BN_CLICKED) self->edit(0,self->audio_.enabled.load() ? 0. : 1.);

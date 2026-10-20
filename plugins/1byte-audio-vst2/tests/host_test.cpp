@@ -155,6 +155,14 @@ int main(int argc,char** argv) {
     // Receive source is selected in the same editor that OBS opens.
     require(p->control(p,VST_EFFECT_OPCODE_EDITOR_OPEN,0,0,parent,0)==1,"open receive editor");
     auto child=FindWindowExW(parent,nullptr,L"OneByteAudioVst2Editor_0200",nullptr);
+    // Regression: the 66 ms UI refresh must not fight tentative mouse selection.
+    auto modeCombo=GetDlgItem(child,104);
+    SendMessageW(modeCombo,CB_SHOWDROPDOWN,TRUE,0);
+    require(SendMessageW(modeCombo,CB_GETDROPPEDSTATE,0,0)!=0,"mode dropdown opened");
+    SendMessageW(modeCombo,CB_SETCURSEL,1,0);
+    for(int i=0;i<5;++i) SendMessageW(child,WM_TIMER,1,0);
+    require(SendMessageW(modeCombo,CB_GETCURSEL,0,0)==1,"timer preserves open mode dropdown selection");
+    SendMessageW(modeCombo,CB_SHOWDROPDOWN,FALSE,0);
     SendMessageW(GetDlgItem(child,104),CB_SETCURSEL,1,0);
     SendMessageW(child,WM_COMMAND,MAKEWPARAM(104,CBN_SELCHANGE),0);
     p->set_parameter(p,5,60.f/66.f); // 0 dB
@@ -171,6 +179,15 @@ int main(int argc,char** argv) {
     std::array<double,480> dl{},dr{}; double* doubles[]{dl.data(),dr.data()};
     for(int i=0;i<10;++i) { p->process_double(p,nullptr,doubles,480);Sleep(10); }
     require(std::abs(dl[100]-.375)<.0001 && std::abs(dr[100]-.125)<.0001,"double Receive and null host input");
+    // Do not overwrite tentative source selection either.
+    auto sourceCombo=GetDlgItem(child,105);
+    SendMessageW(sourceCombo,CB_SHOWDROPDOWN,TRUE,0);
+    require(SendMessageW(sourceCombo,CB_GETDROPPEDSTATE,0,0)!=0,"source dropdown opened");
+    SendMessageW(sourceCombo,CB_SETCURSEL,1,0);
+    for(int i=0;i<5;++i) SendMessageW(child,WM_TIMER,1,0);
+    require(SendMessageW(sourceCombo,CB_GETCURSEL,0,0)==1,"timer preserves open source dropdown selection");
+    SendMessageW(sourceCombo,CB_SHOWDROPDOWN,FALSE,0);
+    SendMessageW(sourceCombo,CB_SETCURSEL,2,0);
     // Persist the selected name together with the Receive mode.
     state=nullptr;const auto receiveSize=p->control(p,VST_EFFECT_OPCODE_GET_CHUNK_DATA,1,0,&state,0);
     std::vector<unsigned char> receiveSaved(static_cast<unsigned char*>(state),static_cast<unsigned char*>(state)+receiveSize);

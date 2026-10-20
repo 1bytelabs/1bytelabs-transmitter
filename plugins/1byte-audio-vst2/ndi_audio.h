@@ -22,6 +22,8 @@ public:
     std::size_t queuedSamples() const { return receiveMode ? receiveQueue.available() : queue.available(); }
     ReceiveQueue receiveQueue;
     std::atomic_int receiveBlock{480};
+    std::atomic_uint64_t hostCallbacks{0}, hostSamples{0}, receiveFrames{0}, receivePlayed{0}, invalidReceiveFrames{0};
+    std::atomic_int hostBlock{0}, receiveConnections{0}, incomingRate{0}, incomingChannels{0};
     std::atomic_bool receiveMode{false};
     std::atomic_uint64_t receiveEpoch{1}, underruns{0};
     AudioQueue queue;

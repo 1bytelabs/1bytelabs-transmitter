@@ -76,7 +76,26 @@ struct Runtime {
 Runtime runtime;
 }
 std::wstring NdiAudio::diagnostic() const {
-    std::lock_guard lock(diagnosticMutex_); return diagnostic_;
+    std::wstring report;
+    { std::lock_guard lock(diagnosticMutex_); report=diagnostic_; }
+    report+=L"\r\n\r\nModo: "+std::wstring(receiveMode ? L"Receber" : L"Enviar")+
+        L"\r\nLigado: "+std::to_wstring(enabled.load())+L" / Processamento: "+std::to_wstring(processing.load())+
+        L"\r\nStatus NDI (0 desligado, 1 aguardando, 2 conectado, 3 erro): "+std::to_wstring(status.load())+
+        L"\r\nChamadas de audio do host: "+std::to_wstring(hostCallbacks.load())+
+        L"\r\nSamples do host: "+std::to_wstring(hostSamples.load())+
+        L"\r\nUltimo bloco do host: "+std::to_wstring(hostBlock.load())+
+        L"\r\nTaxa do host: "+std::to_wstring(sampleRate.load())+
+        L"\r\nConexoes de recepcao: "+std::to_wstring(receiveConnections.load())+
+        L"\r\nFormato de entrada NDI: "+std::to_wstring(incomingRate.load())+L" Hz / "+
+        std::to_wstring(incomingChannels.load())+L" canais"+
+        L"\r\nFrames FrameSync validos: "+std::to_wstring(receiveFrames.load())+
+        L"\r\nFrames FrameSync invalidos: "+std::to_wstring(invalidReceiveFrames.load())+
+        L"\r\nSamples recebidos entregues ao host: "+std::to_wstring(receivePlayed.load())+
+        L"\r\nFila de recepcao (samples): "+std::to_wstring(receiveQueue.available())+
+        L"\r\nFaltas de buffer: "+std::to_wstring(underruns.load())+
+        L"\r\n\r\nSe Chamadas de audio nao aumentar entre dois relatorios, o host nao esta chamando o filtro. "+
+        L"No OBS, use uma fonte de audio ativa, com o filtro habilitado. NDI FrameSync pode gerar silencio quando nao ha sinal.";
+    return report;
 }
 std::vector<std::string> NdiAudio::sources() const {
     std::lock_guard lock(sourcesMutex_); return sources_;
@@ -93,6 +112,8 @@ void NdiAudio::prepare(int rate) {
     queue.prepare(static_cast<std::size_t>(rate/10)); // bounded 100 ms backlog
     receiveQueue.prepare(static_cast<std::size_t>(rate));
     dropped=0; underruns=0; ++receiveEpoch;
+    hostCallbacks=0;hostSamples=0;receiveFrames=0;receivePlayed=0;invalidReceiveFrames=0;
+    hostBlock=0;receiveConnections=0;incomingRate=0;incomingChannels=0;
 }
 void NdiAudio::start() {
     stop(); stopping_=false;
@@ -212,7 +233,7 @@ void NdiAudio::runReceiver() {
     NDIlib_recv_instance_t receiver=nullptr;
     NDIlib_framesync_instance_t sync=nullptr;
     std::uint64_t connectedEpoch=0;
-    ULONGLONG scanAt=0,retryAt=0;
+    ULONGLONG scanAt=0,retryAt=0,formatAt=0;
     std::vector<std::pair<std::string,std::string>> found;
     SendGain gain; gain.reset(sendDb.load(),sampleRate_);
     const int count=sampleRate_/100;
@@ -260,13 +281,21 @@ void NdiAudio::runReceiver() {
             }
             connectedEpoch=epoch; gain.reset(sendDb.load(),sampleRate_);
         }
-        status=api->recv_get_no_connections(receiver)>0 ? 2 : 1;
+        receiveConnections=api->recv_get_no_connections(receiver);
+        status=receiveConnections>0 ? 2 : 1;
+        if(now>=formatAt) {
+            NDIlib_audio_frame_v2_t probe{};
+            api->framesync_capture_audio(sync,&probe,0,0,0);
+            incomingRate=probe.sample_rate;incomingChannels=probe.no_channels;
+            api->framesync_free_audio(sync,&probe);formatAt=now+250;
+        }
         // Backpressure follows the host clock. FrameSync converts rate/channels and
         // continuously corrects the sender/receiver clock difference.
         if(receiveQueue.available()>=static_cast<std::size_t>(std::min(sampleRate_/2,std::max(sampleRate_/20,receiveBlock.load()+sampleRate_/50)))) { Sleep(1); continue; }
         NDIlib_audio_frame_v2_t frame{};
         api->framesync_capture_audio(sync,&frame,sampleRate_,2,count);
         if(frame.p_data && frame.no_channels>=2 && frame.no_samples==count && frame.channel_stride_in_bytes>=count*static_cast<int>(sizeof(float))) {
+            ++receiveFrames;
             float* left=frame.p_data;
             float* right=reinterpret_cast<float*>(reinterpret_cast<unsigned char*>(frame.p_data)+frame.channel_stride_in_bytes);
             gain.setDb(sendDb.load()); gain.apply(left,right,count);
@@ -278,12 +307,14 @@ void NdiAudio::runReceiver() {
             }
             if(!receiveQueue.push(left,right,count,connectedEpoch)) dropped.fetch_add(count);
         }
+        if(!frame.p_data || frame.no_channels<2 || frame.no_samples!=count || frame.channel_stride_in_bytes<count*static_cast<int>(sizeof(float))) ++invalidReceiveFrames;
         api->framesync_free_audio(sync,&frame);
         Sleep(1);
     }
     if(sync) api->framesync_destroy(sync);
     if(receiver) api->recv_destroy(receiver);
     api->find_destroy(finder); runtime.release();
+    receiveConnections=0;incomingRate=0;incomingChannels=0;
 }
 
 }

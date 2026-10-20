@@ -14,7 +14,7 @@ namespace {
 static_assert(sizeof(vst_effect_t)==192);
 static_assert(offsetof(vst_effect_t,process_float)==120);
 static_assert(std::atomic<float>::is_always_lock_free);
-constexpr int Version=300; // 0.3.0, Send and Receive
+constexpr int Version=301; // 0.3.1, stable dropdowns and Receive diagnostics
 enum Parameter : std::uint32_t { Send, Source, Status, Drops, Queued, Volume, Mode, Count };
 struct Chunk {
     std::uint32_t magic{VST_FOURCC('1','B','A','2')},version{2};
@@ -89,6 +89,9 @@ private:
     }
     template<class Sample> void process(const Sample* const* inputs,Sample** outputs,int samples) noexcept {
         if(samples<=0 || !outputs) return;
+        audio.hostCallbacks.fetch_add(1,std::memory_order_relaxed);
+        audio.hostSamples.fetch_add(static_cast<std::uint64_t>(samples),std::memory_order_relaxed);
+        audio.hostBlock.store(samples,std::memory_order_relaxed);
         // The host process-level query is the standard VST2 offline-render hint.
         // Hosts without it return zero; normal live processing remains supported.
         const bool offline=host(&effect,VST_HOST_OPCODE_GET_ACTIVE_THREAD,0,0,nullptr,0)==4;
@@ -109,6 +112,7 @@ private:
                 const auto ready=audio.receiveQueue.available();
                 if(!receivePrimed_ && ready>=static_cast<std::size_t>(std::max(samples,rate_/33))) receivePrimed_=true;
                 const bool copied=on && receivePrimed_ && audio.receiveQueue.pop(outputs[0],outputs[1],static_cast<std::size_t>(samples),epoch);
+                if(copied) audio.receivePlayed.fetch_add(static_cast<std::uint64_t>(samples),std::memory_order_relaxed);
                 if(!copied) {
                     if(on && receivePrimed_) audio.underruns.fetch_add(1,std::memory_order_relaxed);
                     receivePrimed_=false;
