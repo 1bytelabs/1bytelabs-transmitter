@@ -24,8 +24,6 @@ public:
         return name && std::strcmp(name,ViewType::kEditor)==0 ? new SendEditor(this,audio) : nullptr;
     }
     ParamValue PLUGIN_API getParamNormalized(ParamID id) override {
-        if(id==Send) return audio.enabled.load() ? 1. : 0.;
-        if(id==Source) return (audio.slot.load()-1)/15.;
         if(id==Status) return audio.status.load()/3.;
         if(id==Drops) return std::min(1.,audio.dropped.load()/1000000.);
         if(id==Queued) return std::min(1.,audio.queue.available()*10./audio.sampleRate.load());
@@ -131,20 +129,6 @@ private:
         if(!inputs || !outputs) return;
         const bool leftSilent=(in.silenceFlags & 1)!=0;
         const bool rightSilent=(in.silenceFlags & 2)!=0;
-        static_assert(std::atomic<float>::is_always_lock_free);
-        if(data.processMode==kRealtime) {
-            for(int ch=0;ch<2;++ch) {
-                float peak=0;
-                if(inputs[ch] && !(in.silenceFlags & (uint64(1)<<ch))) {
-                    for(int32 i=0;i<data.numSamples;++i) {
-                        const float sample=static_cast<float>(std::abs(inputs[ch][i]));
-                        if(std::isfinite(sample)) peak=std::max(peak,sample);
-                    }
-                }
-                auto previous=audio.peaks[ch].load(std::memory_order_relaxed);
-                while(previous<peak && !audio.peaks[ch].compare_exchange_weak(previous,peak,std::memory_order_relaxed)) {}
-            }
-        }
         // Queue first: host may alias input and output buffers.
         if(audio.enabled.load() && audio.processing.load() && data.processMode==kRealtime) {
             if(!audio.queue.push(inputs[0],inputs[1],static_cast<std::size_t>(data.numSamples),leftSilent,rightSilent))
@@ -164,5 +148,5 @@ private:
 
 BEGIN_FACTORY_DEF("1Byte Labs","https://1bytelabs.com.br","")
 DEF_CLASS2(INLINE_UID_FROM_FUID(zosma::pluginId),PClassInfo::kManyInstances,
-    kVstAudioEffectClass,"1Byte Labs Send",0,"Fx|Tools","0.1.2",kVstVersionString,zosma::SendPlugin::create)
+    kVstAudioEffectClass,"1Byte Labs Send",0,"Fx|Tools","0.1.3",kVstVersionString,zosma::SendPlugin::create)
 END_FACTORY

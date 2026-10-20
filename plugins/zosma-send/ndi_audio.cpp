@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <mutex>
 #include <cstdio>
+#include <cmath>
+#include <algorithm>
 #include "Processing.NDI.Lib.h"
 
 namespace zosma {
@@ -100,6 +102,18 @@ void NdiAudio::run() {
         }
         if (!queue.pop(packet.data(),packet.data()+packetSamples,packetSamples)) {
             Sleep(1); continue;
+        }
+        // Meter only the already queued packet on the network worker. The host
+        // callback is identical to 0.1.0: no peak scans or CAS loops there.
+        static_assert(std::atomic<float>::is_always_lock_free);
+        for(int channel=0;channel<2;++channel) {
+            float peak=0;
+            for(int i=0;i<packetSamples;++i) {
+                const float sample=std::abs(packet[static_cast<std::size_t>(channel)*packetSamples+i]);
+                if(std::isfinite(sample)) peak=std::max(peak,sample);
+            }
+            auto previous=peaks[channel].load(std::memory_order_relaxed);
+            while(previous<peak && !peaks[channel].compare_exchange_weak(previous,peak,std::memory_order_relaxed)) {}
         }
         NDIlib_audio_frame_v3_t frame{};
         frame.sample_rate=sampleRate_; frame.no_channels=2; frame.no_samples=packetSamples;

@@ -27,6 +27,9 @@ private:
     NdiAudio& audio_;
     HWND window_{}, power_{}, source_{};
     HFONT normal_{}, small_{}, title_{}, number_{}, comboFont_{};
+    HDC bufferDc_{};
+    HBITMAP bufferBitmap_{}, originalBitmap_{};
+    int bufferWidth_{}, bufferHeight_{};
     float meter_[2]{};
     ULONGLONG lastTick_{}, clipUntil_[2]{};
     double scale_{1.};

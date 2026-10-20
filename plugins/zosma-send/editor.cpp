@@ -81,12 +81,18 @@ Steinberg::tresult PLUGIN_API SendEditor::attached(void* parent,Steinberg::FIDSt
     SetWindowTheme(source_,L"DarkMode_Explorer",nullptr);
     audio_.peaks[0].exchange(0); audio_.peaks[1].exchange(0);
     lastTick_=GetTickCount64(); tick();
-    SetTimer(window_,1,33,nullptr);
+    SetTimer(window_,1,66,nullptr);
     CPluginView::attached(parent,type);
     if(plugFrame) plugFrame->resizeView(this,&rect);
     return Steinberg::kResultOk;
 }
 void SendEditor::close() {
+    if(bufferDc_) {
+        SelectObject(bufferDc_,originalBitmap_);
+        DeleteObject(bufferBitmap_); DeleteDC(bufferDc_);
+        bufferDc_=nullptr; bufferBitmap_=originalBitmap_=nullptr;
+        bufferWidth_=bufferHeight_=0;
+    }
     if(window_) {
         KillTimer(window_,1);
         DestroyWindow(window_); window_=power_=source_=nullptr;
@@ -129,14 +135,25 @@ void SendEditor::tick() {
 }
 void SendEditor::paint(HDC target) {
     RECT client{}; GetClientRect(window_,&client);
-    HDC dc=CreateCompatibleDC(target); auto bitmap=CreateCompatibleBitmap(target,client.right,client.bottom);
-    auto previous=SelectObject(dc,bitmap);
+    if(client.right<=0 || client.bottom<=0) return;
+    // Reuse the backing bitmap instead of allocating a full frame every tick.
+    if(!bufferDc_) bufferDc_=CreateCompatibleDC(target);
+    if(!bufferDc_) return;
+    if(!bufferBitmap_ || bufferWidth_!=client.right || bufferHeight_!=client.bottom) {
+        if(bufferBitmap_) { SelectObject(bufferDc_,originalBitmap_); DeleteObject(bufferBitmap_); bufferBitmap_=nullptr; }
+        bufferBitmap_=CreateCompatibleBitmap(target,client.right,client.bottom);
+        if(!bufferBitmap_) return;
+        auto previous=static_cast<HBITMAP>(SelectObject(bufferDc_,bufferBitmap_));
+        if(!originalBitmap_) originalBitmap_=previous;
+        bufferWidth_=client.right; bufferHeight_=client.bottom;
+    }
+    HDC dc=bufferDc_;
     fill(dc,client,Bg);
     SetMapMode(dc,MM_ANISOTROPIC); SetWindowExtEx(dc,Width,Height,nullptr);
     SetViewportExtEx(dc,client.right,client.bottom,nullptr);
     text(dc,small_,L"1BYTE LABS  /  AUDIO OVER NETWORK",28,18,480,22,Green);
     text(dc,title_,L"1Byte Labs Send",28,44,400,42);
-    text(dc,small_,L"VST3  /  0.1.2",480,51,132,24,Muted,DT_RIGHT);
+    text(dc,small_,L"VST3  /  0.1.3",480,51,132,24,Muted,DT_RIGHT);
     rounded(dc,28,100,584,128,Card);
     const bool enabled=audio_.enabled.load(), processing=audio_.processing.load();
     const int status=audio_.status.load();
@@ -150,7 +167,7 @@ void SendEditor::paint(HDC target) {
     text(dc,small_,L"NUMERO DA FONTE",48,190,186,24,Muted);
     text(dc,small_,L"Estereo / NDI",428,190,164,24,Muted,DT_RIGHT);
     rounded(dc,28,244,584,128,Card);
-    text(dc,small_,L"ENTRADA DO REAPER",48,254,300,22,Muted);
+    text(dc,small_,L"AUDIO NA FILA DE ENVIO",48,254,300,22,Muted);
     wchar_t rate[80]; std::swprintf(rate,80,L"%.1f kHz  /  2 canais",audio_.sampleRate.load()/1000.);
     text(dc,small_,rate,340,254,252,22,Muted,DT_RIGHT);
     for(int channel=0;channel<2;++channel) {
@@ -179,7 +196,6 @@ void SendEditor::paint(HDC target) {
     text(dc,small_,L"Fila nao e latencia total. Conectado indica um receptor NDI na rede.",28,466,584,22,Muted);
     SetMapMode(dc,MM_TEXT);
     BitBlt(target,0,0,client.right,client.bottom,dc,0,0,SRCCOPY);
-    SelectObject(dc,previous); DeleteObject(bitmap); DeleteDC(dc);
 }
 LRESULT CALLBACK SendEditor::windowProc(HWND window,UINT msg,WPARAM wp,LPARAM lp) {
     auto* self=reinterpret_cast<SendEditor*>(GetWindowLongPtrW(window,GWLP_USERDATA));

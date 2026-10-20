@@ -1,4 +1,4 @@
-# 1Byte Labs Send 0.1.2 — protótipo VST3
+# 1Byte Labs Send 0.1.3 — protótipo VST3
 
 Plugin experimental para Windows x64: recebe o áudio estéreo do REAPER,
 preserva a saída local e envia uma fonte NDI de áudio, sem vídeo ou captura
@@ -7,7 +7,7 @@ Não há promessa de eliminar engasgos nem de latência mínima.
 
 ## Instalação e primeiro teste
 
-1. Baixe o ZIP do artifact **1ByteLabs-Send-0.1.2-prototype-Windows-x64** no workflow
+1. Baixe o ZIP do artifact **1ByteLabs-Send-0.1.3-prototype-Windows-x64** no workflow
    **1Byte Labs Send VST3 - prototipo Windows** desta branch e extraia-o.
 2. Copie a pasta inteira `1Byte Labs Send.vst3` para
    `C:\Program Files\Common Files\VST3`. A DLL NDI deve permanecer em
@@ -31,14 +31,12 @@ Use números diferentes para instâncias simultâneas no mesmo computador.
 ## Interface ao vivo
 
 A janela própria tem tema escuro, botão de envio e seleção de fonte. Conexão,
-fila e perdas são lidas diretamente dos atomics a cada 33 ms, inclusive se
-não houver novos callbacks de áudio. Medidores L/R mostram o pico da entrada
-do REAPER em dBFS, com queda suave e aviso vermelho de pico em 0 dBFS por
-1 segundo. São medidores de entrada, não confirmação de áudio recebido no OBS.
+fila e perdas são lidas diretamente dos atomics a cada 66 ms, inclusive se
+não houver novos callbacks de áudio. Medidores L/R mostram o pico dos pacotes de áudio na fila de envio em dBFS, com queda suave e aviso vermelho de pico em 0 dBFS por
+1 segundo. Eles funcionam com envio ligado e áudio processando; não confirmam recepção no OBS.
 A janela não depende de fechar e reabrir para atualizar.
 
-O timer e toda a pintura ficam na thread da interface; o áudio só calcula
-picos por bloco e publica atomics lock-free. Os controles notificam o host
+O timer e toda a pintura ficam na thread da interface; o cálculo de picos fica no worker de rede, fora do callback do REAPER. Os controles notificam o host
 para automação e persistência. A interface genérica continua como alternativa.
 
 ## Diagnóstico
@@ -71,7 +69,7 @@ O CMake fixa o SDK VST3 em um commit e não usa VSTGUI/JUCE.
 
 ```powershell
 cmake -S plugins/zosma-send -B build-send -A x64
-cmake --build build-send --config Release --target zosma-send zosma-send-queue-test zosma-send-editor-test validator --parallel
+cmake --build build-send --config Release --target zosma-send zosma-send-queue-test zosma-send-editor-test zosma-send-processing-test validator --parallel
 ctest --test-dir build-send -C Release --output-on-failure
 ```
 
@@ -105,3 +103,17 @@ REAPER e selecione a fonte `1Byte Labs Send 01` (ou o número configurado) no OB
 ## 1Byte Labs
 
 [1bytelabs.com.br](https://1bytelabs.com.br) · [contato@1bytelabs.com.br](mailto:contato@1bytelabs.com.br)
+
+## 0.1.3 — teste de regressão de estabilidade
+
+Após relato de oscilação de volume nas versões com editor, o callback de
+áudio `copyAndSend` foi restaurado exatamente ao código da 0.1.0. O cálculo
+de picos foi movido para o worker de rede, os getters dos controles graváveis
+voltaram à implementação original do SDK e a janela reutiliza o bitmap,
+atualizando em aproximadamente 15 Hz. Não foram adicionados ganho, compressor,
+AGC, resampling ou mudanças no formato/tamanho dos pacotes NDI.
+
+Esta é uma mitigação para teste A/B, não confirmação da causa ou da solução.
+Compare o mesmo trecho e os mesmos ajustes no REAPER/OBS com a 0.1.0, usando
+apenas uma instalação do plugin. Teste com editor aberto e fechado. A oscilação
+de volume e os engasgos ocasionais são sintomas separados.
