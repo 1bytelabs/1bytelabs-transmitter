@@ -13,7 +13,7 @@ constexpr int Width=640, Height=604;
 constexpr COLORREF Bg=RGB(13,17,24), Card=RGB(22,29,39), Edge=RGB(39,49,64);
 constexpr COLORREF Text=RGB(235,241,248), Muted=RGB(147,163,183);
 constexpr COLORREF Green=RGB(63,222,166), Amber=RGB(250,190,80), Red=RGB(255,105,119);
-const wchar_t* WindowClass=L"ZosmaNativeEditor_0101";
+const wchar_t* WindowClass=L"OneByteAudioVst2Editor_0200";
 struct RegisteredClass {
     HINSTANCE module{};
     ~RegisteredClass() { if(module) UnregisterClassW(WindowClass,module); }
