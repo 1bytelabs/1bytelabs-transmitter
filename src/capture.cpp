@@ -13,7 +13,21 @@ BOOL CALLBACK enumMonitorProc(HMONITOR monitor, HDC, LPRECT bounds, LPARAM data)
     const int h = bounds->bottom - bounds->top;
     std::wstring label = L"Monitor " + std::to_wstring(index) + L" — " + std::to_wstring(w) + L" × " + std::to_wstring(h);
     if (info.dwFlags & MONITORINFOF_PRIMARY) label += L" (principal)";
-    out->push_back({monitor, *bounds, std::move(label)});
+    bool virtualDisplay = false;
+    DISPLAY_DEVICEW adapter{};
+    adapter.cb = sizeof(adapter);
+    for (DWORD i = 0; EnumDisplayDevicesW(nullptr, i, &adapter, 0); ++i) {
+        if (wcscmp(adapter.DeviceName, info.szDevice) == 0) {
+            // Use the adapter identity, never screen position or monitor number.
+            virtualDisplay = wcsstr(adapter.DeviceID, L"MttVDD") != nullptr ||
+                wcscmp(adapter.DeviceString, L"Virtual Display Driver") == 0;
+            break;
+        }
+        adapter = {};
+        adapter.cb = sizeof(adapter);
+    }
+    if (virtualDisplay) label += L" (virtual)";
+    out->push_back({monitor, *bounds, std::move(label), virtualDisplay});
     return TRUE;
 }
 
@@ -133,6 +147,13 @@ std::vector<WindowSource> enumerateWindows(HWND appWindow) {
 
 bool captureToBuffer(const CaptureSource& source, bool showCursor, std::vector<unsigned char>& bgra, int& width, int& height) {
     RECT bounds = source.bounds;
+    if (source.kind != CaptureKind::Window) {
+        MONITORINFO info{};
+        info.cbSize = sizeof(info);
+        // Never keep capturing stale coordinates after disconnect/reconfiguration.
+        if (!source.monitor || !GetMonitorInfoW(source.monitor, &info) ||
+            !EqualRect(&bounds, &info.rcMonitor)) return false;
+    }
     if (source.kind == CaptureKind::Window) {
         // Janela fechada ou minimizada continua sendo tratada como fonte inválida.
         if (!IsWindow(source.window) || IsIconic(source.window) || !GetWindowRect(source.window, &bounds)) return false;

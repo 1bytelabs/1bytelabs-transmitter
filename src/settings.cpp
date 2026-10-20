@@ -18,7 +18,9 @@ void writeInt(const std::filesystem::path& path, const wchar_t* key, int value) 
 AppSettings loadSettings(const std::filesystem::path& iniPath) {
     AppSettings s;
     s.sourceName = readString(iniPath, L"sourceName", L"1Byte Labs Transmitter");
-    s.captureKind = readInt(iniPath, L"captureKind", 0) == 1 ? CaptureKind::Window : CaptureKind::Monitor;
+    const int kind = readInt(iniPath, L"captureKind", 0);
+    s.captureKind = kind == 2 ? CaptureKind::VirtualMonitor :
+        kind == 1 ? CaptureKind::Window : CaptureKind::Monitor;
     s.sourceIndex = readInt(iniPath, L"sourceIndex", 0);
     s.resolutionIndex = readInt(iniPath, L"resolutionIndex", 0);
     s.fps = readInt(iniPath, L"fps", 30) == 60 ? 60 : 30;
@@ -30,7 +32,7 @@ AppSettings loadSettings(const std::filesystem::path& iniPath) {
 
 void saveSettings(const std::filesystem::path& iniPath, const AppSettings& s) {
     WritePrivateProfileStringW(L"app", L"sourceName", s.sourceName.c_str(), iniPath.c_str());
-    writeInt(iniPath, L"captureKind", s.captureKind == CaptureKind::Window ? 1 : 0);
+    writeInt(iniPath, L"captureKind", static_cast<int>(s.captureKind));
     writeInt(iniPath, L"sourceIndex", s.sourceIndex);
     writeInt(iniPath, L"resolutionIndex", s.resolutionIndex);
     writeInt(iniPath, L"fps", s.fps);

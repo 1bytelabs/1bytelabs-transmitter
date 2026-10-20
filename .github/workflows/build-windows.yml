@@ -70,6 +70,7 @@ jobs:
             $ndiDll.FullName `
             "dist-receiver\Processing.NDI.Lib.x64.dll"
 
+          Copy-Item "TELA-VIRTUAL.md" "dist-transmitter\TELA-VIRTUAL.md"
           Copy-Item "README-TESTE.txt" "dist-transmitter\LEIA-ME.txt"
           Copy-Item "README-RECEIVER-TESTE.txt" "dist-receiver\LEIA-ME.txt"
           Copy-Item "THIRD_PARTY_NOTICES.md" "dist-transmitter\AVISOS-DE-TERCEIROS.txt"

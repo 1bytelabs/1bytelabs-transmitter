@@ -2,6 +2,7 @@
 #include <commctrl.h>
 #include <dwmapi.h>
 #include <uxtheme.h>
+#include <shellapi.h>
 
 #include <algorithm>
 #include <atomic>
@@ -172,14 +173,19 @@ void applyDarkTheme(HWND hwnd) { SetWindowTheme(hwnd, L"DarkMode_Explorer", null
 void setControlFont(HWND hwnd, HFONT font) { SendMessageW(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE); }
 
 CaptureKind selectedKind() {
-    return SendMessageW(g.captureKind, CB_GETCURSEL, 0, 0) == 1 ? CaptureKind::Window : CaptureKind::Monitor;
+    const LRESULT selected = SendMessageW(g.captureKind, CB_GETCURSEL, 0, 0);
+    return selected == 2 ? CaptureKind::VirtualMonitor :
+        selected == 1 ? CaptureKind::Window : CaptureKind::Monitor;
 }
 
 void refreshSources(int preferredIndex = -1) {
     SendMessageW(g.captureSource, CB_RESETCONTENT, 0, 0);
     const CaptureKind kind = selectedKind();
-    if (kind == CaptureKind::Monitor) {
+    if (kind != CaptureKind::Window) {
         g.monitors = enumerateMonitors();
+        if (kind == CaptureKind::VirtualMonitor) {
+            std::erase_if(g.monitors, [](const MonitorSource& item) { return !item.virtualDisplay; });
+        }
         for (const auto& item : g.monitors)
             SendMessageW(g.captureSource, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item.label.c_str()));
     } else {
@@ -192,6 +198,10 @@ void refreshSources(int preferredIndex = -1) {
         const int index = preferredIndex >= 0 && preferredIndex < count ? preferredIndex : 0;
         SendMessageW(g.captureSource, CB_SETCURSEL, index, 0);
     }
+    g.previewFrame.clear();
+    g.previewWidth = g.previewHeight = 0;
+    if (kind == CaptureKind::VirtualMonitor && count == 0)
+        postStatus(L"Tela virtual não encontrada · clique em Configurar tela virtual");
     if (g.preview) InvalidateRect(g.preview, nullptr, TRUE);
 }
 
@@ -199,7 +209,7 @@ CaptureSource currentSource() {
     CaptureSource source;
     source.kind = selectedKind();
     const int index = static_cast<int>(SendMessageW(g.captureSource, CB_GETCURSEL, 0, 0));
-    if (source.kind == CaptureKind::Monitor && index >= 0 && index < static_cast<int>(g.monitors.size())) {
+    if (source.kind != CaptureKind::Window && index >= 0 && index < static_cast<int>(g.monitors.size())) {
         const auto& item = g.monitors[index];
         source.monitor = item.handle;
         source.bounds = item.bounds;
@@ -345,6 +355,7 @@ void updateControls() {
     EnableWindow(g.captureKind, !running);
     EnableWindow(g.captureSource, !running);
     EnableWindow(g.refresh, !running);
+    EnableWindow(GetDlgItem(g.window, 1400), !running);
     EnableWindow(g.fps, !running);
     EnableWindow(g.cursor, !running);
     EnableWindow(g.protectedMode, !running);
@@ -436,7 +447,12 @@ std::vector<unsigned char> createMessageFrame(int width, int height,
 void updatePreview() {
     if (!g.preview || !IsWindowVisible(g.window)) return;
     CaptureSource source = currentSource();
-    if (source.bounds.right <= source.bounds.left || source.bounds.bottom <= source.bounds.top) return;
+    if (source.bounds.right <= source.bounds.left || source.bounds.bottom <= source.bounds.top) {
+        g.previewFrame.clear();
+        g.previewWidth = g.previewHeight = 0;
+        InvalidateRect(g.preview, nullptr, FALSE);
+        return;
+    }
 
     const bool blocked = trayImageHidden() || protectedContentVisible(source);
     g.previewProtected = blocked;
@@ -461,6 +477,10 @@ void updatePreview() {
         g.previewWidth = width;
         g.previewHeight = height;
         g.previewLabel = source.label;
+        InvalidateRect(g.preview, nullptr, FALSE);
+    } else {
+        g.previewFrame.clear();
+        g.previewWidth = g.previewHeight = 0;
         InvalidateRect(g.preview, nullptr, FALSE);
     }
 }
@@ -682,7 +702,7 @@ void stopTransmission() {
 
 void showHelp() {
     MessageBoxW(g.window,
-        L"1. Escolha Monitor ou Janela e confirme a fonte na prévia.\n"
+        L"1. Escolha Monitor, Janela ou Tela virtual e confirme a fonte na prévia.\n"
         L"2. Desmarque Enviar áudio se quiser transmitir somente a imagem.\n"
         L"3. No Modo protegido, libere o receptor quando ele for detectado.\n"
         L"4. Um receptor NDI pode abrir mais de uma conexão técnica; o app memoriza a linha de base.\n"
@@ -734,12 +754,15 @@ void drawSmallText(HDC dc, int x, int y, const wchar_t* text, int width = 300) {
 }
 
 void createUi() {
+    addControl(L"BUTTON", L"Configurar tela virtual", BS_PUSHBUTTON,
+        32, 588, 240, 32, 1400, gFont);
     g.help = addControl(L"BUTTON", L"?  Como usar", BS_PUSHBUTTON, 806, 20, 116, 38, IdHelp, gFont);
     g.start = addControl(L"BUTTON", L"Iniciar transmissão", BS_DEFPUSHBUTTON, 476, 18, 190, 42, IdStart, gFontBold);
     g.sourceName = addControl(L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL, 32, 208, 466, 34, IdSourceName, gFont);
     g.captureKind = addControl(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL, 32, 274, 140, 220, IdCaptureKind, gFont);
     SendMessageW(g.captureKind, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Monitor"));
     SendMessageW(g.captureKind, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Janela"));
+    SendMessageW(g.captureKind, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Tela virtual"));
     g.captureSource = addControl(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL, 182, 274, 266, 260, IdCaptureSource, gFont);
     g.refresh = addControl(L"BUTTON", L"↻", BS_PUSHBUTTON, 458, 274, 40, 34, IdRefresh, gFontBold);
     g.fps = addControl(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST, 32, 340, 120, 120, IdFps, gFont);
@@ -793,7 +816,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g.settings = loadSettings(iniPath());
         createUi();
         SetWindowTextW(g.sourceName, g.settings.sourceName.c_str());
-        SendMessageW(g.captureKind, CB_SETCURSEL, g.settings.captureKind == CaptureKind::Window ? 1 : 0, 0);
+        SendMessageW(g.captureKind, CB_SETCURSEL, static_cast<int>(g.settings.captureKind), 0);
         refreshSources(g.settings.sourceIndex);
         SendMessageW(g.fps, CB_SETCURSEL, g.settings.fps == 60 ? 1 : 0, 0);
         setChecked(g.cursor, g.settings.showCursor);
@@ -807,6 +830,11 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (g.settings.showHelpOnStart) PostMessageW(hwnd, WM_COMMAND, IdHelp, 0);
         return 0;
     }
+
+    case WM_DISPLAYCHANGE:
+        // Active capture validates monitor geometry and stops on topology changes.
+        if (!g.running.load()) refreshSources();
+        return 0;
 
     case WM_TIMER:
         if (wp == kPreviewTimer) {
@@ -827,6 +855,25 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         const int id = LOWORD(wp);
         if (id == IdCaptureKind && HIWORD(wp) == CBN_SELCHANGE) refreshSources();
         else if (id == IdCaptureSource && HIWORD(wp) == CBN_SELCHANGE) updatePreview();
+        else if (id == 1400 && !g.running.load()) {
+            const int choice = MessageBoxW(hwnd,
+                L"Este recurso usa o Virtual Display Driver (open source, licença MIT).\n\n"
+                L"1. Baixe o utilitário oficial Virtual Driver Control e instale o driver x64 como administrador.\n"
+                L"2. Nas configurações de Tela do Windows, use Estender e mantenha a tela física como principal.\n"
+                L"3. Configure a tela virtual em 1920 × 1080 para o primeiro teste.\n"
+                L"4. Volte ao Transmitter, escolha Tela virtual e clique em Atualizar (↻).\n\n"
+                L"Use Win + Shift + seta para mover janelas entre as telas.\n"
+                L"A prévia permite acompanhar a imagem; controle as janelas pelos atalhos do Windows.\n\n"
+                L"Sim: abrir download oficial. Não: abrir configurações de Tela. Cancelar: voltar.",
+                L"Configurar tela virtual — versão de teste", MB_YESNOCANCEL | MB_ICONINFORMATION);
+            const wchar_t* destination = choice == IDYES ?
+                L"https://github.com/VirtualDrivers/Virtual-Display-Driver/releases" :
+                choice == IDNO ? L"ms-settings:display" : nullptr;
+            if (destination && reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd, L"open", destination,
+                    nullptr, nullptr, SW_SHOWNORMAL)) <= 32)
+                MessageBoxW(hwnd, L"Não foi possível abrir o destino. Consulte o guia TELA-VIRTUAL.md.",
+                    L"Tela virtual", MB_OK | MB_ICONWARNING);
+        }
         else if (id == IdRefresh) refreshSources();
         else if (id == IdStart) {
             if (g.running.load()) stopTransmission(); else startTransmission();
