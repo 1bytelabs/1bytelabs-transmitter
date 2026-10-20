@@ -13,7 +13,7 @@ using namespace Steinberg::Vst;
 
 namespace zosma {
 const FUID pluginId(0x69F84583,0x68334CD9,0xA39A9A47,0x3B3FA714);
-enum : ParamID { Send=0, Source=1, Status=2, Drops=3, Queued=4 };
+enum : ParamID { Send=0, Source=1, Status=2, Drops=3, Queued=4, SendVolume=5 };
 
 // Combined component deliberately shares only atomic controls with its worker.
 // Native editor polls only atomics; host audio processing never paints UI.
@@ -36,6 +36,7 @@ public:
         addAudioOutput(STR16("Stereo Out"),SpeakerArr::kStereo);
         parameters.addParameter(STR16("Send NDI"),nullptr,1,0,ParameterInfo::kCanAutomate,Send);
         parameters.addParameter(new RangeParameter(STR16("Source number"),Source,nullptr,1,16,1,15));
+        parameters.addParameter(new RangeParameter(STR16("Send volume"),SendVolume,STR16("dB"),-60,6,0));
         auto* status=new StringListParameter(STR16("Network status"),Status,nullptr,ParameterInfo::kIsReadOnly);
         status->appendString(STR16("Off")); status->appendString(STR16("Waiting for receiver"));
         status->appendString(STR16("Connected")); status->appendString(STR16("Runtime or sender error"));
@@ -79,15 +80,18 @@ public:
         if(!stream) return kInvalidArgument;
         IBStreamer state(stream,kLittleEndian);
         int32 version{},enabled{},slot{};
-        if(!state.readInt32(version) || version!=1 || !state.readInt32(enabled) || !state.readInt32(slot)) return kResultFalse;
+        if(!state.readInt32(version) || (version!=1 && version!=2) || !state.readInt32(enabled) || !state.readInt32(slot)) return kResultFalse;
+        double db=0;
+        if(version==2 && (!state.readDouble(db) || !std::isfinite(db))) return kResultFalse;
         setParamNormalized(Send,enabled ? 1. : 0.);
         setParamNormalized(Source,(std::clamp(slot,1,16)-1)/15.);
+        setParamNormalized(SendVolume,(std::clamp(db,-60.,6.)+60.)/66.);
         return kResultOk;
     }
     tresult PLUGIN_API getState(IBStream* stream) override {
         if(!stream) return kInvalidArgument;
         IBStreamer state(stream,kLittleEndian);
-        return state.writeInt32(1) && state.writeInt32(audio.enabled ? 1 : 0) && state.writeInt32(audio.slot.load())
+        return state.writeInt32(2) && state.writeInt32(audio.enabled ? 1 : 0) && state.writeInt32(audio.slot.load()) && state.writeDouble(audio.sendDb.load())
             ? kResultOk : kResultFalse;
     }
     tresult PLUGIN_API process(ProcessData& data) override {
@@ -115,6 +119,7 @@ private:
     void apply(ParamID id,ParamValue value) noexcept {
         if(id==Send) audio.enabled=value>=.5;
         else if(id==Source) audio.slot=1+static_cast<int>(std::lround(value*15.));
+        else if(id==SendVolume) audio.sendDb=static_cast<float>(value*66.-60.);
     }
     static void publish(ProcessData& data,ParamID id,ParamValue value) {
         if(!data.outputParameterChanges) return;
@@ -148,5 +153,5 @@ private:
 
 BEGIN_FACTORY_DEF("1Byte Labs","https://1bytelabs.com.br","")
 DEF_CLASS2(INLINE_UID_FROM_FUID(zosma::pluginId),PClassInfo::kManyInstances,
-    kVstAudioEffectClass,"1Byte Labs Send",0,"Fx|Tools","0.1.3",kVstVersionString,zosma::SendPlugin::create)
+    kVstAudioEffectClass,"1Byte Labs Send",0,"Fx|Tools","0.1.4",kVstVersionString,zosma::SendPlugin::create)
 END_FACTORY

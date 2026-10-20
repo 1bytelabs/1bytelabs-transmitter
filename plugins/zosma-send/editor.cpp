@@ -5,10 +5,11 @@
 #include <cwchar>
 #include <mutex>
 #include <uxtheme.h>
+#include <commctrl.h>
 
 namespace zosma {
 namespace {
-constexpr int Width=640, Height=500;
+constexpr int Width=640, Height=604;
 constexpr COLORREF Bg=RGB(13,17,24), Card=RGB(22,29,39), Edge=RGB(39,49,64);
 constexpr COLORREF Text=RGB(235,241,248), Muted=RGB(147,163,183);
 constexpr COLORREF Green=RGB(63,222,166), Amber=RGB(250,190,80), Red=RGB(255,105,119);
@@ -79,6 +80,12 @@ Steinberg::tresult PLUGIN_API SendEditor::attached(void* parent,Steinberg::FIDSt
     comboFont_=font(p(16));
     SendMessageW(source_,WM_SETFONT,reinterpret_cast<WPARAM>(comboFont_),TRUE);
     SetWindowTheme(source_,L"DarkMode_Explorer",nullptr);
+    INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_BAR_CLASSES}; InitCommonControlsEx(&controls);
+    volume_=CreateWindowExW(0,TRACKBAR_CLASSW,L"Volume de envio NDI",WS_CHILD|WS_VISIBLE|WS_TABSTOP|TBS_HORZ|TBS_NOTICKS,
+        p(48),p(432),p(430),p(28),window_,reinterpret_cast<HMENU>(102),module,nullptr);
+    SendMessageW(volume_,TBM_SETRANGE,TRUE,MAKELPARAM(0,660));
+    SendMessageW(volume_,TBM_SETPAGESIZE,0,10);
+    SendMessageW(volume_,TBM_SETPOS,TRUE,600);
     audio_.peaks[0].exchange(0); audio_.peaks[1].exchange(0);
     lastTick_=GetTickCount64(); tick();
     SetTimer(window_,1,66,nullptr);
@@ -95,7 +102,7 @@ void SendEditor::close() {
     }
     if(window_) {
         KillTimer(window_,1);
-        DestroyWindow(window_); window_=power_=source_=nullptr;
+        DestroyWindow(window_); window_=power_=source_=volume_=nullptr;
         if(comboFont_) { DeleteObject(comboFont_); comboFont_=nullptr; }
     }
 }
@@ -125,6 +132,8 @@ void SendEditor::tick() {
         meter_[i]=std::max(peak,meter_[i]*decay);
     }
     lastTick_=now;
+    const auto position=static_cast<int>(std::lround((std::clamp(audio_.sendDb.load(),-60.f,6.f)+60.f)*10.f));
+    if(SendMessageW(volume_,TBM_GETPOS,0,0)!=position) SendMessageW(volume_,TBM_SETPOS,TRUE,position);
     const auto slot=std::clamp(audio_.slot.load(),1,16)-1;
     if(SendMessageW(source_,CB_GETCURSEL,0,0)!=slot && !SendMessageW(source_,CB_GETDROPPEDSTATE,0,0))
         SendMessageW(source_,CB_SETCURSEL,slot,0);
@@ -153,7 +162,7 @@ void SendEditor::paint(HDC target) {
     SetViewportExtEx(dc,client.right,client.bottom,nullptr);
     text(dc,small_,L"1BYTE LABS  /  AUDIO OVER NETWORK",28,18,480,22,Green);
     text(dc,title_,L"1Byte Labs Send",28,44,400,42);
-    text(dc,small_,L"VST3  /  0.1.3",480,51,132,24,Muted,DT_RIGHT);
+    text(dc,small_,L"VST3  /  0.1.4",480,51,132,24,Muted,DT_RIGHT);
     rounded(dc,28,100,584,128,Card);
     const bool enabled=audio_.enabled.load(), processing=audio_.processing.load();
     const int status=audio_.status.load();
@@ -167,7 +176,7 @@ void SendEditor::paint(HDC target) {
     text(dc,small_,L"NUMERO DA FONTE",48,190,186,24,Muted);
     text(dc,small_,L"Estereo / NDI",428,190,164,24,Muted,DT_RIGHT);
     rounded(dc,28,244,584,128,Card);
-    text(dc,small_,L"AUDIO NA FILA DE ENVIO",48,254,300,22,Muted);
+    text(dc,small_,L"AUDIO PARA ENVIO / APOS FADER",48,254,300,22,Muted);
     wchar_t rate[80]; std::swprintf(rate,80,L"%.1f kHz  /  2 canais",audio_.sampleRate.load()/1000.);
     text(dc,small_,rate,340,254,252,22,Muted,DT_RIGHT);
     for(int channel=0;channel<2;++channel) {
@@ -185,15 +194,22 @@ void SendEditor::paint(HDC target) {
         text(dc,small_,level,518,y-5,58,24,clipUntil_[channel]>GetTickCount64() ? Red : Text,DT_RIGHT);
     }
     text(dc,small_,L"-60                 -36                  -18                  -6      0 dBFS",76,345,516,19,Muted);
-    rounded(dc,28,388,282,68,Card); rounded(dc,326,388,286,68,Card);
-    text(dc,small_,L"FILA DE ENVIO",48,394,220,20,Muted);
+    rounded(dc,28,388,584,88,Card);
+    text(dc,small_,L"VOLUME DE ENVIO",48,398,300,22,Muted);
+    text(dc,small_,L"-60 dB",48,414,70,18,Muted);
+    text(dc,small_,L"0 dB",410,414,34,18,Muted);
+    text(dc,small_,L"+6 dB",448,414,36,18,Muted);
+    wchar_t volumeText[32]; std::swprintf(volumeText,32,L"%+.1f dB",audio_.sendDb.load());
+    text(dc,number_,volumeText,482,414,110,34,Green,DT_RIGHT);
+    rounded(dc,28,492,282,68,Card); rounded(dc,326,492,286,68,Card);
+    text(dc,small_,L"FILA DE ENVIO",48,498,220,20,Muted);
     const double queued=std::clamp(audio_.queue.available()*1000./audio_.sampleRate.load(),0.,100.);
     wchar_t queue[64]; std::swprintf(queue,64,L"%.1f ms",queued);
-    text(dc,number_,queue,48,416,220,30,queued>=75 ? Amber : Text);
+    text(dc,number_,queue,48,520,220,30,queued>=75 ? Amber : Text);
     const auto drops=audio_.dropped.load(); wchar_t dropped[64]; std::swprintf(dropped,64,L"%llu",static_cast<unsigned long long>(drops));
-    text(dc,small_,L"SAMPLES DESCARTADOS",346,394,246,20,Muted);
-    text(dc,number_,dropped,346,416,246,30,drops ? Amber : Green);
-    text(dc,small_,L"Fila nao e latencia total. Conectado indica um receptor NDI na rede.",28,466,584,22,Muted);
+    text(dc,small_,L"SAMPLES DESCARTADOS",346,498,246,20,Muted);
+    text(dc,number_,dropped,346,520,246,30,drops ? Amber : Green);
+    text(dc,small_,L"O fader altera so o envio NDI. Fila nao e latencia total.",28,570,584,22,Muted);
     SetMapMode(dc,MM_TEXT);
     BitBlt(target,0,0,client.right,client.bottom,dc,0,0,SRCCOPY);
 }
@@ -207,6 +223,29 @@ LRESULT CALLBACK SendEditor::windowProc(HWND window,UINT msg,WPARAM wp,LPARAM lp
     switch(msg) {
     case WM_ERASEBKGND: return 1;
     case WM_TIMER: if(wp==1) self->tick(); return 0;
+    case WM_HSCROLL:
+        if(reinterpret_cast<HWND>(lp)==self->volume_) {
+            const auto position=SendMessageW(self->volume_,TBM_GETPOS,0,0);
+            self->edit(5,position/660.);
+            return 0;
+        }
+        break;
+    case WM_NOTIFY: {
+        auto* notification=reinterpret_cast<NMCUSTOMDRAW*>(lp);
+        if(notification->hdr.hwndFrom!=self->volume_ || notification->hdr.code!=NM_CUSTOMDRAW) break;
+        if(notification->dwDrawStage==CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+        if(notification->dwDrawStage==CDDS_ITEMPREPAINT) {
+            const auto& r=notification->rc;
+            if(notification->dwItemSpec==TBCD_CHANNEL) {
+                fill(notification->hdc,r,Bg); return CDRF_SKIPDEFAULT;
+            }
+            if(notification->dwItemSpec==TBCD_THUMB) {
+                rounded(notification->hdc,r.left,r.top,r.right-r.left,r.bottom-r.top,Green,Green);
+                return CDRF_SKIPDEFAULT;
+            }
+        }
+        return CDRF_DODEFAULT;
+    }
     case WM_PAINT: { PAINTSTRUCT ps{}; auto dc=BeginPaint(window,&ps); self->paint(dc); EndPaint(window,&ps); return 0; }
     case WM_COMMAND:
         if(LOWORD(wp)==100 && HIWORD(wp)==BN_CLICKED) self->edit(0,self->audio_.enabled.load() ? 0. : 1.);

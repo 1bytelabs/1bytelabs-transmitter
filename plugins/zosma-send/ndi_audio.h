@@ -18,6 +18,7 @@ public:
     std::atomic_uint64_t dropped{0};
     std::atomic_int sampleRate{48000};
     std::atomic<float> peaks[2]{};
+    std::atomic<float> sendDb{0.f};
 private:
     void run();
     int sampleRate_{48000};

@@ -1,4 +1,4 @@
-# 1Byte Labs Send 0.1.3 — protótipo VST3
+# 1Byte Labs Send 0.1.4 — protótipo VST3
 
 Plugin experimental para Windows x64: recebe o áudio estéreo do REAPER,
 preserva a saída local e envia uma fonte NDI de áudio, sem vídeo ou captura
@@ -7,7 +7,7 @@ Não há promessa de eliminar engasgos nem de latência mínima.
 
 ## Instalação e primeiro teste
 
-1. Baixe o ZIP do artifact **1ByteLabs-Send-0.1.3-prototype-Windows-x64** no workflow
+1. Baixe o ZIP do artifact **1ByteLabs-Send-0.1.4-prototype-Windows-x64** no workflow
    **1Byte Labs Send VST3 - prototipo Windows** desta branch e extraia-o.
 2. Copie a pasta inteira `1Byte Labs Send.vst3` para
    `C:\Program Files\Common Files\VST3`. A DLL NDI deve permanecer em
@@ -69,7 +69,7 @@ O CMake fixa o SDK VST3 em um commit e não usa VSTGUI/JUCE.
 
 ```powershell
 cmake -S plugins/zosma-send -B build-send -A x64
-cmake --build build-send --config Release --target zosma-send zosma-send-queue-test zosma-send-editor-test zosma-send-processing-test validator --parallel
+cmake --build build-send --config Release --target zosma-send zosma-send-queue-test zosma-send-editor-test zosma-send-processing-test zosma-send-gain-test validator --parallel
 ctest --test-dir build-send -C Release --output-on-failure
 ```
 
@@ -117,3 +117,17 @@ Esta é uma mitigação para teste A/B, não confirmação da causa ou da soluç
 Compare o mesmo trecho e os mesmos ajustes no REAPER/OBS com a 0.1.0, usando
 apenas uma instalação do plugin. Teste com editor aberto e fechado. A oscilação
 de volume e os engasgos ocasionais são sintomas separados.
+
+## 0.1.4 — volume de envio
+
+O fader **Volume de envio** ajusta somente os pacotes NDI, de -60 a +6 dB.
+0 dB mantém o nível original; -6 dB reduz a amplitude a aproximadamente metade.
+Não é um controle do master do REAPER e não acompanha seu fader. A saída
+local e a mixagem entre as tracks permanecem intactas. O nível é salvo
+no projeto e aceita automação. Projetos antigos abrem com 0 dB.
+
+Mudanças de ganho são suavizadas em 20 ms no worker de envio; nenhum cálculo
+de ganho foi acrescentado ao callback de áudio do host. Os medidores mostram
+o sinal após o fader. Valores positivos podem levar os picos acima de 0 dBFS;
+não há limiter ou AGC automático. Esta mudança não altera os buffers nem
+pretende corrigir os engasgos ocasionais.

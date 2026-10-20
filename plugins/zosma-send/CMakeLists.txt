@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(ZosmaSend VERSION 0.1.3 LANGUAGES CXX)
+project(ZosmaSend VERSION 0.1.4 LANGUAGES CXX)
 
 include(CTest)
 find_package(Threads REQUIRED)
@@ -7,6 +7,9 @@ add_executable(zosma-send-queue-test tests/audio_queue_test.cpp)
 target_compile_features(zosma-send-queue-test PRIVATE cxx_std_17)
 target_link_libraries(zosma-send-queue-test PRIVATE Threads::Threads)
 add_test(NAME audio-queue COMMAND zosma-send-queue-test)
+add_executable(zosma-send-gain-test tests/send_gain_test.cpp)
+target_compile_features(zosma-send-gain-test PRIVATE cxx_std_17)
+add_test(NAME send-gain COMMAND zosma-send-gain-test)
 
 option(ZOSMA_QUEUE_TESTS_ONLY "Build portable queue tests without the VST SDK" OFF)
 if(ZOSMA_QUEUE_TESTS_ONLY)
@@ -40,23 +43,24 @@ target_include_directories(zosma-send PRIVATE
 target_compile_definitions(zosma-send PRIVATE
     NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00
     PROCESSINGNDILIB_STATIC NDILIB_CPP_DEFAULT_CONSTRUCTORS=0)
-target_link_libraries(zosma-send PRIVATE sdk avrt user32 gdi32 uxtheme)
+target_link_libraries(zosma-send PRIVATE sdk avrt user32 gdi32 uxtheme comctl32)
 add_executable(zosma-send-editor-test tests/editor_smoke_test.cpp editor.cpp ndi_audio.cpp)
 target_compile_features(zosma-send-editor-test PRIVATE cxx_std_17)
 target_include_directories(zosma-send-editor-test PRIVATE ${vst3sdk_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ndi/include)
 target_compile_definitions(zosma-send-editor-test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
     _WIN32_WINNT=0x0A00 PROCESSINGNDILIB_STATIC NDILIB_CPP_DEFAULT_CONSTRUCTORS=0)
-target_link_libraries(zosma-send-editor-test PRIVATE sdk avrt user32 gdi32 uxtheme)
+target_link_libraries(zosma-send-editor-test PRIVATE sdk avrt user32 gdi32 uxtheme comctl32)
 add_test(NAME editor-smoke COMMAND zosma-send-editor-test)
 add_executable(zosma-send-processing-test tests/processing_test.cpp editor.cpp ndi_audio.cpp
+    ${vst3sdk_SOURCE_DIR}/public.sdk/source/common/memorystream.cpp
     ${vst3sdk_SOURCE_DIR}/public.sdk/source/vst/vstsinglecomponenteffect.cpp)
 target_compile_features(zosma-send-processing-test PRIVATE cxx_std_17)
 target_include_directories(zosma-send-processing-test PRIVATE ${vst3sdk_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ndi/include)
 target_compile_definitions(zosma-send-processing-test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN
     _WIN32_WINNT=0x0A00 PROCESSINGNDILIB_STATIC NDILIB_CPP_DEFAULT_CONSTRUCTORS=0)
-target_link_libraries(zosma-send-processing-test PRIVATE sdk avrt user32 gdi32 uxtheme)
+target_link_libraries(zosma-send-processing-test PRIVATE sdk avrt user32 gdi32 uxtheme comctl32)
 add_test(NAME processing-transparency COMMAND zosma-send-processing-test)
 if(MSVC)
     target_compile_options(zosma-send PRIVATE /W4 /utf-8 /EHsc)

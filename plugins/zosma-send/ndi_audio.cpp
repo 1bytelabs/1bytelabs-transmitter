@@ -1,4 +1,5 @@
 #include "ndi_audio.h"
+#include "send_gain.h"
 #include <windows.h>
 #include <avrt.h>
 #include <filesystem>
@@ -67,6 +68,8 @@ void NdiAudio::run() {
     if (task) AvSetMmThreadPriority(task, AVRT_PRIORITY_HIGH);
     const int packetSamples=sampleRate_/100; // 10 ms, independent of host block size
     std::vector<float> packet(static_cast<std::size_t>(packetSamples)*2);
+    SendGain gain;
+    gain.reset(sendDb.load(),sampleRate_);
     const NDIlib_v6* api=nullptr;
     NDIlib_send_instance_t sender=nullptr;
     int currentSlot=0;
@@ -94,6 +97,7 @@ void NdiAudio::run() {
                 currentSlot=requestedSlot;
             }
             if (!sender) { status=3; retryAt=now+2000; continue; }
+            gain.reset(sendDb.load(),sampleRate_);
             status=1; lastConnectionCheck=0;
         }
         if (now-lastConnectionCheck>=250) {
@@ -103,6 +107,8 @@ void NdiAudio::run() {
         if (!queue.pop(packet.data(),packet.data()+packetSamples,packetSamples)) {
             Sleep(1); continue;
         }
+        gain.setDb(sendDb.load(std::memory_order_relaxed));
+        gain.apply(packet.data(),packet.data()+packetSamples,packetSamples);
         // Meter only the already queued packet on the network worker. The host
         // callback is identical to 0.1.0: no peak scans or CAS loops there.
         static_assert(std::atomic<float>::is_always_lock_free);

@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cmath>
+#include <commctrl.h>
 
 using namespace Steinberg;
 using namespace Steinberg::Vst;
@@ -12,6 +13,7 @@ public:
     tresult PLUGIN_API setParamNormalized(ParamID id,ParamValue value) override {
         if(id==0) audio.enabled=value>=.5;
         if(id==1) audio.slot=1+static_cast<int>(std::lround(value*15));
+        if(id==5) audio.sendDb=static_cast<float>(value*66.-60.);
         return kResultOk;
     }
 };
@@ -35,7 +37,7 @@ int main() {
     SetProcessDPIAware();
     auto* controller=new Controller;
     controller->initialize(nullptr);
-    auto parent=CreateWindowExW(0,L"STATIC",L"1Byte Labs Send UI smoke test",WS_OVERLAPPEDWINDOW|WS_VISIBLE,
+    auto parent=CreateWindowExW(0,L"STATIC",L"Zosma Send UI smoke test",WS_OVERLAPPEDWINDOW|WS_VISIBLE,
         0,0,720,600,nullptr,nullptr,GetModuleHandleW(nullptr),nullptr);
     require(parent!=nullptr);
     auto* editor=new zosma::SendEditor(controller,controller->audio);
@@ -48,6 +50,10 @@ int main() {
     SendMessageW(GetDlgItem(child,101),CB_SETCURSEL,6,0);
     SendMessageW(child,WM_COMMAND,MAKEWPARAM(101,CBN_SELCHANGE),0);
     require(controller->audio.slot.load()==7);
+    require(GetDlgItem(child,102)!=nullptr);
+    SendMessageW(GetDlgItem(child,102),TBM_SETPOS,TRUE,540);
+    SendMessageW(child,WM_HSCROLL,TB_THUMBPOSITION,reinterpret_cast<LPARAM>(GetDlgItem(child,102)));
+    require(std::abs(controller->audio.sendDb.load()+6.f)<.0001f);
     controller->audio.status=2; controller->audio.processing=true;
     controller->audio.peaks[0]=.45f; controller->audio.peaks[1]=.25f;
     SendMessageW(child,WM_TIMER,1,0);

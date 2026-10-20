@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdlib>
 #include <iostream>
+#include "public.sdk/source/common/memorystream.h"
 
 void require(bool value) { if(!value) { std::cerr << "Audio transparency test failed\n"; std::abort(); } }
 template<class Sample> void test(int32 size,bool inPlace,bool send,bool offline) {
@@ -16,6 +17,7 @@ template<class Sample> void test(int32 size,bool inPlace,bool send,bool offline)
     require(plugin->setParamNormalized(zosma::Send,send ? 1. : 0.)==kResultOk);
     // The controller must report what the host set, as in the 0.1.0 SDK getter.
     require(plugin->getParamNormalized(zosma::Send)==(send ? 1. : 0.));
+    require(plugin->setParamNormalized(zosma::SendVolume,54./66.)==kResultOk); // -6 dB NDI only
     std::array<Sample,256> left{},right{},outL{},outR{};
     for(int block=0;block<2000;++block) {
         for(int i=0;i<256;++i) {
@@ -45,6 +47,22 @@ template<class Sample> void test(int32 size,bool inPlace,bool send,bool offline)
     plugin->terminate(); plugin->release();
 }
 int main() {
+    auto* saved=new zosma::SendPlugin; saved->initialize(nullptr);
+    saved->setParamNormalized(zosma::SendVolume,48./66.); // -12 dB
+    MemoryStream current;
+    require(saved->getState(&current)==kResultOk);
+    current.seek(0,IBStream::kIBSeekSet,nullptr);
+    auto* restored=new zosma::SendPlugin; restored->initialize(nullptr);
+    require(restored->setState(&current)==kResultOk);
+    require(std::abs(restored->getParamNormalized(zosma::SendVolume)-48./66.)<.000001);
+    MemoryStream legacy;
+    IBStreamer writer(&legacy,kLittleEndian);
+    writer.writeInt32(1); writer.writeInt32(1); writer.writeInt32(7);
+    legacy.seek(0,IBStream::kIBSeekSet,nullptr);
+    require(restored->setState(&legacy)==kResultOk);
+    require(std::abs(restored->getParamNormalized(zosma::SendVolume)-60./66.)<.000001);
+    require(restored->getParamNormalized(zosma::Source)==6./15.);
+    saved->terminate(); saved->release(); restored->terminate(); restored->release();
     for(bool inPlace:{false,true}) for(bool send:{false,true}) for(bool offline:{false,true}) {
         test<float>(kSample32,inPlace,send,offline);
         test<double>(kSample64,inPlace,send,offline);
