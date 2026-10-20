@@ -1,0 +1,88 @@
+name: 1Byte Labs Audio VST2 - Send prototype
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/1byte-send-vst2]
+    paths: ['plugins/1byte-audio-vst2/**', 'plugins/zosma-send/**', '.github/workflows/build-audio-vst2.yml', 'third_party/ndi/include/**']
+  pull_request:
+    branches: [feature/zosma-send-vst3]
+    paths: ['plugins/1byte-audio-vst2/**', '.github/workflows/build-audio-vst2.yml']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure VST2 independently
+        run: cmake -S plugins/1byte-audio-vst2 -B build-vst2 -A x64
+      - name: Build DLL and test host
+        run: cmake --build build-vst2 --config Release --parallel
+      - name: Test host ABI, audio, UI and mock NDI transport
+        run: ctest --test-dir build-vst2 -C Release --output-on-failure
+      - name: Package with real NDI runtime (no test fixture)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runtimeZip = Join-Path $env:RUNNER_TEMP 'ndi-runtime.zip'
+          Invoke-WebRequest 'https://github.com/1bytelabs/1bytelabs-transmitter/releases/download/v0.3.1-beta/Zosma-Transmitter-v0.3.1-beta-Windows-x64.zip' -OutFile $runtimeZip
+          $runtimeDir = Join-Path $env:RUNNER_TEMP 'ndi-runtime-real'
+          Expand-Archive $runtimeZip $runtimeDir -Force
+          $dll = Get-ChildItem $runtimeDir -Filter Processing.NDI.Lib.x64.dll -Recurse | Select-Object -First 1
+          if (-not $dll) { throw 'NDI runtime not found' }
+          New-Item -ItemType Directory -Force dist-vst2 | Out-Null
+          Copy-Item 'build-vst2/Release/1Byte Labs Audio.dll' dist-vst2
+          Copy-Item $dll.FullName dist-vst2
+          if ((Get-FileHash (Join-Path dist-vst2 $dll.Name)).Hash -ne (Get-FileHash $dll.FullName).Hash) { throw 'Runtime hash mismatch' }
+          Copy-Item plugins/1byte-audio-vst2/README.md dist-vst2/LEIA-ME.md
+          Copy-Item THIRD_PARTY_NOTICES.md dist-vst2/AVISOS-NDI.md
+          Copy-Item build-vst2/_deps/vst2abi-src/LICENSE dist-vst2/LICENCA-ABI-VST2.txt
+          Compress-Archive dist-vst2/* 1ByteLabs-Audio-0.2.0-VST2-Windows-x64.zip -Force
+      - name: Smoke test packaged DLL with real NDI runtime
+        shell: pwsh
+        run: |
+          & 'build-vst2/Release/vst2-host-test.exe' "$pwd/dist-vst2/1Byte Labs Audio.dll" --real
+          if ($LASTEXITCODE -ne 0) { throw 'Real runtime smoke test failed' }
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $compiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) { throw 'Inno Setup missing on runner' }
+          & $compiler "/DStageDir=$pwd\dist-vst2" "/DOutputDir=$pwd\installer-out" plugins/1byte-audio-vst2/installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+      - name: Test installer and uninstaller in isolated folders
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $testRoot = Join-Path $env:RUNNER_TEMP '1byte-installer-test'
+          $appDir = Join-Path $testRoot 'app'
+          $vstDir = Join-Path $testRoot 'VSTPlugins'
+          New-Item -ItemType Directory -Force $vstDir | Out-Null
+          Set-Content (Join-Path $vstDir 'keep.txt') 'Unrelated file must remain'
+          $setup = Get-ChildItem installer-out -Filter '*.exe' | Select-Object -First 1
+          $process = Start-Process $setup.FullName -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$appDir`"", "/VSTDIR=`"$vstDir`"") -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Installer failed' }
+          if (-not (Test-Path (Join-Path $vstDir '1Byte Labs Audio.dll'))) { throw 'Plugin was not installed' }
+          if (-not (Test-Path (Join-Path $vstDir 'Processing.NDI.Lib.x64.dll'))) { throw 'Runtime was not installed' }
+          $process = Start-Process (Join-Path $appDir 'unins000.exe') -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Uninstaller failed' }
+          if (Test-Path (Join-Path $vstDir '1Byte Labs Audio.dll')) { throw 'Plugin not removed' }
+          if (-not (Test-Path (Join-Path $vstDir 'keep.txt'))) { throw 'Unrelated file was removed' }
+      - name: Upload VST2 and installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1ByteLabs-Audio-0.2.0-VST2-Windows-x64
+          path: |
+            1ByteLabs-Audio-0.2.0-VST2-Windows-x64.zip
+            installer-out/*.exe
+          if-no-files-found: error
+      - name: Upload test report and editor capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1ByteLabs-Audio-VST2-test-report
+          path: |
+            build-vst2/Testing/Temporary/LastTest.log
+            build-vst2/vst2-editor-preview.bmp
+          if-no-files-found: ignore
