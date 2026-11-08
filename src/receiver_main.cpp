@@ -922,7 +922,13 @@ void paintPreview(HWND window) {
         info.bmiHeader.biPlanes = 1;
         info.bmiHeader.biBitCount = 32;
         info.bmiHeader.biCompression = BI_RGB;
-        SetStretchBltMode(backBuffer, COLORONCOLOR);
+        // Preserve the direct pixel path at 1:1 and filter only when scaling.
+        if (drawWidth != cropWidth || drawHeight != cropHeight) {
+            if (SetStretchBltMode(backBuffer, HALFTONE) != 0)
+                SetBrushOrgEx(backBuffer, 0, 0, nullptr);
+        } else {
+            SetStretchBltMode(backBuffer, COLORONCOLOR);
+        }
         // The received frame is stored as a top-down DIB. StretchDIBits still
         // interprets the source Y from the lower edge when selecting a partial
         // rectangle, so translate the visual top/bottom crop accordingly.
