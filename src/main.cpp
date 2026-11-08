@@ -347,6 +347,7 @@ struct VirtualDisplayState {
     bool attached{};
     bool canChange{};
     bool disabled{};
+    bool started{};
 };
 
 bool hasPhysicalPrimary() {
@@ -389,29 +390,65 @@ VirtualDisplayState getVirtualDisplayState() {
     ULONG status{}, problem{};
     if (CM_Get_DevNode_Status(&status, &problem, result.device, 0) != CR_SUCCESS) return result;
     result.disabled = (status & DN_HAS_PROBLEM) && problem == CM_PROB_DISABLED;
-    result.canChange = result.disabled || hasPhysicalPrimary();
+    result.started = (status & DN_STARTED) != 0;
+    result.canChange = hasPhysicalPrimary() && (result.disabled || result.started);
     return result;
+}
+
+bool extendVirtualDisplay() {
+    const auto monitors = enumerateMonitors();
+    const MonitorSource* neighbor = nullptr;
+    for (const auto& monitor : monitors) {
+        if (!monitor.virtualDisplay && (!neighbor || monitor.bounds.right > neighbor->bounds.right))
+            neighbor = &monitor;
+    }
+    if (!neighbor) return false;
+
+    std::wstring adapter;
+    for (DWORD index = 0;; ++index) {
+        DISPLAY_DEVICEW device{};
+        device.cb = sizeof(device);
+        if (!EnumDisplayDevicesW(nullptr, index, &device, 0)) break;
+        if (device.StateFlags & (DISPLAY_DEVICE_MIRRORING_DRIVER | DISPLAY_DEVICE_PRIMARY_DEVICE))
+            continue;
+        if (_wcsicmp(device.DeviceID, L"ROOT\\MttVDD") != 0 &&
+            wcscmp(device.DeviceString, L"Virtual Display Driver") != 0) continue;
+        if (!adapter.empty()) return false;
+        adapter = device.DeviceName;
+    }
+    if (adapter.empty()) return false;
+
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(mode);
+    if (!EnumDisplaySettingsExW(adapter.c_str(), ENUM_REGISTRY_SETTINGS, &mode, 0) ||
+        !mode.dmPelsWidth || !mode.dmPelsHeight) {
+        mode = {};
+        mode.dmSize = sizeof(mode);
+        if (!EnumDisplaySettingsExW(adapter.c_str(), 0, &mode, 0)) return false;
+    }
+    mode.dmPosition = {neighbor->bounds.right, neighbor->bounds.top};
+    mode.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT;
+    return ChangeDisplaySettingsExW(adapter.c_str(), &mode, nullptr, CDS_UPDATEREGISTRY, nullptr)
+        == DISP_CHANGE_SUCCESSFUL;
 }
 
 bool setVirtualDisplayAttached(const VirtualDisplayState& display, bool attach) {
     if (!display.canChange) return false;
-    if (!attach && (!display.attached || !hasPhysicalPrimary())) return false;
-    if (attach && !display.disabled) return display.attached;
-    const CONFIGRET change = attach ? CM_Enable_DevNode(display.device, 0) :
-        CM_Disable_DevNode(display.device, CM_DISABLE_UI_NOT_OK);
-    if (change != CR_SUCCESS) return false;
+    if (attach && display.attached) return true;
+    if (!attach && !display.attached) return false;
+    if (attach && display.disabled && CM_Enable_DevNode(display.device, 0) != CR_SUCCESS)
+        return false;
+    if (!attach && CM_Disable_DevNode(display.device, CM_DISABLE_UI_NOT_OK) != CR_SUCCESS)
+        return false;
 
-    // PnP and the Windows desktop can finish updating at different times.
-    for (int attempt = 0; attempt < 15; ++attempt) {
-        ULONG status{}, problem{};
-        if (CM_Get_DevNode_Status(&status, &problem, display.device, 0) == CR_SUCCESS) {
-            if (attach && (status & DN_STARTED)) return true;
-            if (!attach && (status & DN_HAS_PROBLEM) && problem == CM_PROB_DISABLED) {
-                const auto monitors = enumerateMonitors();
-                if (std::none_of(monitors.begin(), monitors.end(),
-                    [](const MonitorSource& monitor) { return monitor.virtualDisplay; })) return true;
-            }
-        }
+    // Starting a PnP device does not necessarily attach it to the desktop.
+    bool extensionApplied = false;
+    for (int attempt = 0; attempt < 25; ++attempt) {
+        const auto current = getVirtualDisplayState();
+        if (attach && current.attached) return true;
+        if (!attach && current.disabled && !current.attached) return true;
+        if (attach && current.canChange && current.started && !extensionApplied)
+            extensionApplied = extendVirtualDisplay();
         std::this_thread::sleep_for(100ms);
     }
     return false;
@@ -919,9 +956,16 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         BOOL dark = TRUE;
         DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
         g.settings = loadSettings(iniPath());
-        if (g.settings.restoreVirtualOnOpen) {
+        // Also recover installations whose previous build cleared the restore flag
+        // when PnP started, before the virtual monitor was added to the desktop.
+        bool virtualRestoreFailed = false;
+        if (g.settings.restoreVirtualOnOpen || g.settings.detachVirtualOnExit) {
             const auto display = getVirtualDisplayState();
-            if (display.attached || setVirtualDisplayAttached(display, true)) {
+            if (!display.attached && display.canChange) {
+                virtualRestoreFailed = !setVirtualDisplayAttached(display, true);
+                g.settings.restoreVirtualOnOpen = virtualRestoreFailed;
+                saveSettings(iniPath(), g.settings);
+            } else if (display.attached && g.settings.restoreVirtualOnOpen) {
                 g.settings.restoreVirtualOnOpen = false;
                 saveSettings(iniPath(), g.settings);
             }
@@ -957,6 +1001,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g.allowTg = false;
         updateControls();
         SetTimer(hwnd, kPreviewTimer, 250, nullptr);
+        if (virtualRestoreFailed) postStatus(L"Tela virtual inativa · abra Configurar tela virtual");
         if (g.settings.showHelpOnStart) PostMessageW(hwnd, WM_COMMAND, IdHelp, 0);
         return 0;
     }
@@ -1000,9 +1045,9 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             dialog.dwCommonButtons = TDCBF_CLOSE_BUTTON;
             dialog.pszWindowTitle = L"Configurar tela virtual";
             dialog.pszMainInstruction = display.attached ? L"Tela virtual ativa" : L"Tela virtual inativa";
-            dialog.pszContent = (display.canChange && (display.attached || display.disabled)) ? L"O driver permanece instalado ao desativar a tela." :
+            dialog.pszContent = display.canChange ? L"O driver permanece instalado ao desativar a tela." :
                 L"Use o utilitário oficial para instalar ou gerenciar o driver.";
-            const bool canToggle = display.canChange && (display.attached || display.disabled);
+            const bool canToggle = display.canChange;
             dialog.cButtons = canToggle ? 3 : 2;
             dialog.pButtons = canToggle ? buttons : buttons + 1;
             dialog.nDefaultButton = IDCLOSE;
