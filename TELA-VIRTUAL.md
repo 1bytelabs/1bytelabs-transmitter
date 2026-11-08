@@ -6,6 +6,25 @@ O Transmitter continua portable. A pasta `virtual-display` inclui o utilitário 
 Virtual Driver Control 25.7.23 com seus componentes originais, sem modificar
 os arquivos assinados. Somente o driver exige instalação inicial no Windows.
 
+## Instalador do Transmitter (Windows x64)
+
+O instalador de teste instala o Transmitter para o usuário atual. Se precisar
+do monitor virtual, marque **Instalar suporte à tela virtual**. A opção vem
+desmarcada. No fim, o Virtual Driver Control abre como administrador; escolha
+**Install Driver** na seção de vídeo se o driver ainda não estiver instalado.
+Se o driver já estiver presente, basta fechar o utilitário. Depois, no Windows,
+configure a tela como **Estender** e escolha o monitor **(virtual)** no Transmitter.
+
+Você pode deixar essa opção desmarcada e configurar a tela mais tarde pelo
+próprio Transmitter. Desinstalar o aplicativo preserva o driver, que pode ser
+compartilhado com outros programas. Para removê-lo, pare a transmissão e use
+**Uninstall Driver** na seção de vídeo do Virtual Driver Control, antes de
+desinstalar o Transmitter.
+
+A versão ZIP continua disponível. Os testes automatizados instalam e removem
+o aplicativo, sem instalar o driver de vídeo. O fluxo com driver e o controle
+automático da tela ainda precisam de validação em um computador Windows.
+
 ## Primeiro teste (Windows x64)
 
 1. Extraia **todo o pacote**, mantendo `virtual-display` ao lado do Transmitter.

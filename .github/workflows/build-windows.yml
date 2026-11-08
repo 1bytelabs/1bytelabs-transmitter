@@ -104,6 +104,42 @@ jobs:
           Copy-Item "THIRD_PARTY_NOTICES.md" "dist-transmitter\AVISOS-DE-TERCEIROS.txt"
           Copy-Item "THIRD_PARTY_NOTICES.md" "dist-receiver\AVISOS-DE-TERCEIROS.txt"
 
+      - name: Compilar instalador do Transmitter
+        shell: pwsh
+        run: |
+          $version = [regex]::Match((Get-Content CMakeLists.txt -Raw), 'project\(OneByteLabsTransmitter VERSION (\d+\.\d+\.\d+)').Groups[1].Value
+          if (-not $version) { throw "Versão do Transmitter não localizada." }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Inno Setup 6 não encontrado na imagem Windows." }
+          & $iscc "/DTransmitterVersion=$version" installer\transmitter.iss
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao compilar o instalador." }
+
+      - name: Testar instalação e remoção do aplicativo sem driver
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $testDir = Join-Path $env:RUNNER_TEMP "transmitter-install-test"
+          $setup = "dist-installer\1ByteLabs-Transmitter-Setup-Windows-x64.exe"
+          $result = Start-Process $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$testDir`"" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Falha na instalação: $($result.ExitCode)" }
+          foreach ($file in @("1Byte Labs Transmitter.exe", "Processing.NDI.Lib.x64.dll", "virtual-display\VDD Control.exe", "virtual-display\LICENSE-VIRTUAL-DISPLAY.txt")) {
+            if (-not (Test-Path (Join-Path $testDir $file))) { throw "Arquivo não instalado: $file" }
+          }
+          $uninstall = @(Get-ChildItem $testDir -Filter "unins*.exe")
+          if ($uninstall.Count -ne 1) { throw "Desinstalador ausente ou ambíguo." }
+          $result = Start-Process $uninstall[0].FullName -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait -PassThru
+          if ($result.ExitCode -ne 0 -or (Test-Path (Join-Path $testDir "1Byte Labs Transmitter.exe"))) {
+            throw "Falha na desinstalação: $($result.ExitCode)"
+          }
+
+      - name: Publicar instalador de teste do Transmitter
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1ByteLabs-Transmitter-Setup-Windows-x64
+          path: dist-installer/1ByteLabs-Transmitter-Setup-Windows-x64.exe
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Publicar artifact de teste
         uses: actions/upload-artifact@v4
         with:
