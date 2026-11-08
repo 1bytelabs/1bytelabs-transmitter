@@ -1,4 +1,4 @@
-# Tela virtual — versão experimental
+# Tela virtual
 
 O Transmitter inclui o driver de vídeo original assinado do projeto
 [VirtualDrivers](https://github.com/VirtualDrivers/Virtual-Display-Driver).
@@ -30,8 +30,8 @@ só o aplicativo pelo Windows preserva o driver.
 ## Validação e limites
 
 O teste automatizado instala e remove o aplicativo, sem alterar os drivers
-do computador de build. Instalação, reparo e desinstalação do driver precisam
-de teste em um Windows x64 real antes da publicação. A prévia é somente visual.
+do computador de build. Instalação, desinstalação e ativação ao reabrir foram verificadas em um
+computador Windows x64. A prévia é somente visual.
 Se o Transmitter for encerrado à força, a tela virtual pode permanecer ativa.
 
 O projeto do driver alerta sobre conflitos com atualizações de GPU/chipset.
