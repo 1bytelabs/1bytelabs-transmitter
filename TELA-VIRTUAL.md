@@ -1,92 +1,45 @@
 # Tela virtual — versão experimental
 
-A opção **Monitor** também transmite a tela virtual criada pelo projeto open source
-[VirtualDrivers / Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver).
-O Transmitter continua portable. A pasta `virtual-display` inclui o utilitário oficial
-Virtual Driver Control 25.7.23 com seus componentes originais, sem modificar
-os arquivos assinados. Somente o driver exige instalação inicial no Windows.
+O Transmitter inclui o driver de vídeo original assinado do projeto
+[VirtualDrivers](https://github.com/VirtualDrivers/Virtual-Display-Driver).
+O instalador e o ZIP incluem o pacote de vídeo na pasta `virtual-display`.
 
-## Instalador do Transmitter (Windows x64)
+## Instalar e usar
 
-O instalador de teste instala o Transmitter para o usuário atual. Se precisar
-do monitor virtual, marque **Instalar suporte à tela virtual**. A opção vem
-desmarcada. No fim, o Virtual Driver Control abre como administrador; escolha
-**Install Driver** na seção de vídeo se o driver ainda não estiver instalado.
-Se o driver já estiver presente, basta fechar o utilitário. Depois, no Windows,
-configure a tela como **Estender** e escolha o monitor **(virtual)** no Transmitter.
+1. No instalador Windows x64, marque **Instalar suporte à tela virtual**
+   ou, no Transmitter, abra **Configurar tela virtual → Instalar driver**.
+   Na versão portable, extraia o ZIP inteiro antes de abrir o Transmitter.
+2. Autorize a operação no Windows, se solicitado. Quando a tela estiver ativa,
+   escolha **Monitor** e selecione a entrada marcada como **(virtual)**.
+3. No PowerPoint, escolha a tela virtual para a apresentação e use o Modo de
+   Exibição do Apresentador para ver suas anotações na tela física.
 
-Você pode deixar essa opção desmarcada e configurar a tela mais tarde pelo
-próprio Transmitter. Desinstalar o aplicativo preserva o driver, que pode ser
-compartilhado com outros programas. Para removê-lo, pare a transmissão e use
-**Uninstall Driver** na seção de vídeo do Virtual Driver Control, antes de
-desinstalar o Transmitter.
+O painel mostra se a tela está ativa. Use **Ativar tela virtual** ou
+**Desativar tela virtual** para controlar sua disponibilidade. A opção
+**Desativar tela virtual ao sair** vem marcada; ao reabrir, o Transmitter
+tenta restaurar o monitor. O monitor físico deve permanecer como principal.
 
-A versão ZIP continua disponível. Os testes automatizados instalam e removem
-o aplicativo, sem instalar o driver de vídeo. O fluxo com driver e o controle
-automático da tela ainda precisam de validação em um computador Windows.
+Se a tela não aparecer ou não ativar, use **Reparar driver** no painel.
+A operação reaplica o pacote assinado ao dispositivo existente. Se o Windows
+pedir reinicialização, reinicie antes de continuar.
 
-## Primeiro teste (Windows x64)
+Use **Desinstalar driver** para remover a tela virtual do Windows. O Windows
+preserva o pacote se ele ainda estiver em uso por outro dispositivo. Remover
+só o aplicativo pelo Windows preserva o driver.
 
-1. Extraia **todo o pacote**, mantendo `virtual-display` ao lado do Transmitter.
-2. Clique em **Configurar tela virtual**, junto à seleção do que transmitir.
-3. Se não houver tela virtual, escolha **Abrir Virtual Driver Control** para abrir o utilitário
-   incluído e autorize como administrador. Na seção de vídeo, clique em **Install Driver**.
-   Não é necessário instalar o driver de áudio. Não desative Secure Boot nem habilite modo de teste.
-4. Abra as configurações de Tela pelo mesmo botão e selecione **Estender estes vídeos**.
-   Mantenha o monitor físico como principal e configure o virtual em 1920 × 1080,
-   SDR, inicialmente a 60 Hz.
-5. No Transmitter, escolha **Monitor** e clique em **↻**.
-6. Selecione o monitor virtual e inicie a transmissão normalmente.
-   No modo protegido, autorize o receptor como de costume.
+## Validação e limites
 
-**Configurar tela virtual** abre um painel com controles para ativar ou desativar
-a tela, abrir Tela no Windows ou abrir o Virtual Driver Control. A opção
-**Desativar tela virtual ao sair** vem marcada e vale ao encerrar o aplicativo
-normalmente, inclusive pela bandeja. O driver fica instalado. Se o Transmitter
-desativar a tela, tenta reativá-la na próxima abertura. Ao reabrir, o Transmitter verifica se o monitor voltou à área de trabalho.
-Se o driver iniciar com a tela desconectada, tenta estender a área de trabalho
-até ela. Se o Windows não aplicar a alteração, use **Estender** nas
-configurações de Tela.
-
-O controle direto é limitado a uma tela virtual do driver suportado e requer
-um monitor físico como principal. Se o Windows rejeitar a alteração, use
-as configurações de Tela ou o utilitário oficial.
-
-A lista de monitores inclui telas físicas e virtuais. A tela do adaptador
-Virtual Display Driver / MttVDD aparece com a indicação **(virtual)**.
-Escolha essa tela para transmitir seu conteúdo. Se ela não aparecer, confira
-se o driver está instalado e a tela está estendida.
-O driver pode exigir reinicialização ou o Visual C++ Redistributable.
-
-## PowerPoint e outras janelas
-
-No PowerPoint, escolha a tela virtual para a apresentação e habilite o Modo de
-Exibição do Apresentador na tela física. Para outros programas, mova as janelas
-com **Win + Shift + seta esquerda/direita** ou arraste-as para a segunda tela.
-A prévia da tela virtual atualiza continuamente, mas ainda é somente visual:
-ela não encaminha mouse ou teclado. A captura de monitor físico mantém a prévia
-anterior desativada, e a de janela mantém a imagem de referência.
-Tudo que estiver visível no monitor virtual faz parte da transmissão, sujeito
-às proteções de privacidade existentes.
-
-## Limitações e validação necessária
-
-Esta integração precisa de teste em Windows real com PowerPoint, navegador,
-vídeo e receptor NDI. Não foi validada em ARM. A alteração de posição/resolução
-ou desconexão do monitor invalida a captura; pare o envio e atualize as fontes.
-Se o aplicativo for encerrado à força, a tela pode permanecer ativa. Para remover
-o driver, use o utilitário oficial após parar a transmissão.
+O teste automatizado instala e remove o aplicativo, sem alterar os drivers
+do computador de build. Instalação, reparo e desinstalação do driver precisam
+de teste em um Windows x64 real antes da publicação. A prévia é somente visual.
+Se o Transmitter for encerrado à força, a tela virtual pode permanecer ativa.
 
 O projeto do driver alerta sobre conflitos com atualizações de GPU/chipset.
-Siga sua documentação, inclusive a recomendação de desinstalar o driver antes
-dessas atualizações. Não faça o primeiro teste durante uma transmissão ao vivo.
+Siga as instruções do projeto para essas atualizações.
 
 ## Licença
 
-O código do Virtual Display Driver está sob licença MIT:
-https://github.com/VirtualDrivers/Virtual-Display-Driver/blob/master/LICENSE
-A distribuição inclui a licença em `virtual-display/LICENSE-VIRTUAL-DISPLAY.txt`
-e preserva os demais avisos e componentes do pacote original.
-O build verifica o SHA-256 fixado do ZIP oficial e as assinaturas do utilitário
-e dos catálogos antes de montar o pacote. Não é necessário certificado próprio
-para esses componentes originais. O executável do Transmitter continua sem assinatura própria.
+O Virtual Display Driver é distribuído sob a licença MIT. O texto acompanha
+o pacote em `virtual-display/LICENSE-VIRTUAL-DISPLAY.txt`. O build verifica
+o hash fixado do arquivo oficial e a assinatura do catálogo. Os arquivos
+originais do driver de vídeo são copiados sem alteração.

@@ -70,6 +70,8 @@ target_link_libraries(onebytelabs-transmitter PRIVATE
   gdi32
   comctl32
   setupapi
+  newdev
+  advapi32
   cfgmgr32
   shell32
   dwmapi

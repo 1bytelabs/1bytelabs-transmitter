@@ -37,7 +37,7 @@ jobs:
             -OutFile $packagePath
           Expand-Archive -Path $packagePath -DestinationPath $ndiRuntimeDir -Force
 
-      - name: Preparar Virtual Driver Control original
+      - name: Preparar somente o driver de vídeo virtual assinado
         timeout-minutes: 5
         shell: pwsh
         run: |
@@ -50,20 +50,21 @@ jobs:
             throw "O pacote do VDD não corresponde à versão fixada."
           }
           Expand-Archive -Path $vddZip -DestinationPath $vddDir -Force
-          $control = @(Get-ChildItem $vddDir -Filter "VDD Control.exe" -Recurse)
-          if ($control.Count -ne 1) { throw "VDD Control.exe ausente ou ambíguo." }
-          $signature = Get-AuthenticodeSignature $control[0].FullName
-          if ($signature.Status -ne "Valid") { throw "Assinatura do VDD Control inválida: $($signature.Status)" }
-          $catalogs = @(Get-ChildItem $control[0].DirectoryName -Filter *.cat -Recurse)
-          if ($catalogs.Count -eq 0) { throw "Catálogos dos drivers ausentes." }
-          foreach ($catalog in $catalogs) {
-            if ((Get-AuthenticodeSignature $catalog.FullName).Status -ne "Valid") {
-              throw "Assinatura inválida: $($catalog.Name)"
-            }
+          $drivers = @(Get-ChildItem $vddDir -Filter "MttVDD.inf" -File -Recurse |
+            Where-Object { (Get-Content $_.FullName -Raw) -match '(?i)\.NTamd64' })
+          if ($drivers.Count -ne 1) {
+            throw "Driver MttVDD x64 ausente ou ambíguo. INFs: $((Get-ChildItem $vddDir -Filter *.inf -Recurse).FullName -join ', ')"
           }
-          New-Item -ItemType Directory -Force -Path "dist-transmitter\virtual-display" | Out-Null
-          Copy-Item "$($control[0].DirectoryName)\*" "dist-transmitter\virtual-display" -Recurse -Force
-          Copy-Item "third_party\virtual-display\LICENSE.txt" "dist-transmitter\virtual-display\LICENSE-VIRTUAL-DISPLAY.txt"
+          $driverDir = $drivers[0].DirectoryName
+          $cat = Join-Path $driverDir "MttVDD.cat"
+          if ((Get-AuthenticodeSignature $cat).Status -ne "Valid") {
+            throw "Assinatura do catálogo do driver inválida."
+          }
+          $out = New-Item -ItemType Directory -Force -Path "dist-transmitter\virtual-display"
+          foreach ($file in @("MttVDD.inf", "MttVDD.cat", "MttVDD.dll")) {
+            Copy-Item -LiteralPath (Join-Path $driverDir $file) -Destination $out.FullName
+          }
+          Copy-Item "third_party\virtual-display\LICENSE.txt" (Join-Path $out.FullName "LICENSE-VIRTUAL-DISPLAY.txt")
 
       - name: Montar pacotes portáteis
         shell: pwsh
@@ -122,7 +123,7 @@ jobs:
           $setup = "dist-installer\1ByteLabs-Transmitter-Setup-Windows-x64.exe"
           $result = Start-Process $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$testDir`"" -Wait -PassThru
           if ($result.ExitCode -ne 0) { throw "Falha na instalação: $($result.ExitCode)" }
-          foreach ($file in @("1Byte Labs Transmitter.exe", "Processing.NDI.Lib.x64.dll", "virtual-display\VDD Control.exe", "virtual-display\LICENSE-VIRTUAL-DISPLAY.txt")) {
+          foreach ($file in @("1Byte Labs Transmitter.exe", "Processing.NDI.Lib.x64.dll", "virtual-display\MttVDD.inf", "virtual-display\MttVDD.cat", "virtual-display\MttVDD.dll", "virtual-display\LICENSE-VIRTUAL-DISPLAY.txt")) {
             if (-not (Test-Path (Join-Path $testDir $file))) { throw "Arquivo não instalado: $file" }
           }
           $uninstall = @(Get-ChildItem $testDir -Filter "unins*.exe")

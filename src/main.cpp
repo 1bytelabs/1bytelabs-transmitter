@@ -4,6 +4,7 @@
 #include <uxtheme.h>
 #include <shellapi.h>
 #include <setupapi.h>
+#include <newdev.h>
 #include <cfgmgr32.h>
 #include <cfg.h>
 
@@ -16,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -342,12 +344,17 @@ void collectSettings() {
 }
 
 // Match the hardware ID from the supported Virtual Display Driver INF.
+constexpr GUID kDisplayClass{0x4d36e968, 0xe325, 0x11ce,
+    {0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18}};
+constexpr wchar_t kVirtualHardwareId[] = L"ROOT\\MttVDD\0";
 struct VirtualDisplayState {
     DEVINST device{};
     bool attached{};
     bool canChange{};
     bool disabled{};
     bool started{};
+    unsigned matches{};
+    bool enumerated{};
 };
 
 bool hasPhysicalPrimary() {
@@ -361,14 +368,12 @@ bool hasPhysicalPrimary() {
 
 VirtualDisplayState getVirtualDisplayState() {
     VirtualDisplayState result;
-    constexpr GUID displayClass{0x4d36e968, 0xe325, 0x11ce,
-        {0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18}};
     const auto monitors = enumerateMonitors();
     result.attached = std::any_of(monitors.begin(), monitors.end(),
         [](const MonitorSource& monitor) { return monitor.virtualDisplay; });
-    const HDEVINFO devices = SetupDiGetClassDevsW(&displayClass, nullptr, nullptr, DIGCF_PRESENT);
+    const HDEVINFO devices = SetupDiGetClassDevsW(&kDisplayClass, nullptr, nullptr, DIGCF_PRESENT);
     if (devices == INVALID_HANDLE_VALUE) return result;
-    unsigned matches = 0;
+
     for (DWORD i = 0;; ++i) {
         SP_DEVINFO_DATA device{sizeof(device)};
         if (!SetupDiEnumDeviceInfo(devices, i, &device)) break;
@@ -380,18 +385,105 @@ VirtualDisplayState getVirtualDisplayState() {
         for (const wchar_t* id = ids; *id; id += wcslen(id) + 1) {
             if (_wcsicmp(id, L"ROOT\\MttVDD") == 0) {
                 result.device = device.DevInst;
-                ++matches;
+                ++result.matches;
                 break;
             }
         }
     }
+    result.enumerated = GetLastError() == ERROR_NO_MORE_ITEMS;
     SetupDiDestroyDeviceInfoList(devices);
-    if (matches != 1) return result;
+    if (!result.enumerated || result.matches != 1) return result;
     ULONG status{}, problem{};
     if (CM_Get_DevNode_Status(&status, &problem, result.device, 0) != CR_SUCCESS) return result;
     result.disabled = (status & DN_HAS_PROBLEM) && problem == CM_PROB_DISABLED;
     result.started = (status & DN_STARTED) != 0;
     result.canChange = hasPhysicalPrimary() && (result.disabled || result.started);
+    return result;
+}
+
+DWORD installVirtualDriver(HWND owner, bool repair) {
+    const auto display = getVirtualDisplayState();
+    if (!display.enumerated || display.matches > 1) return ERROR_INVALID_DATA;
+    if (display.matches && !repair) return ERROR_SUCCESS;
+    if (!hasPhysicalPrimary()) return ERROR_NOT_SUPPORTED;
+    const auto inf = executableDirectory() / L"virtual-display" / L"MttVDD.inf";
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(inf, error)) return ERROR_FILE_NOT_FOUND;
+
+    HDEVINFO devices = INVALID_HANDLE_VALUE;
+    SP_DEVINFO_DATA device{sizeof(device)};
+    if (!display.matches) {
+        devices = SetupDiCreateDeviceInfoList(&kDisplayClass, owner);
+        if (devices == INVALID_HANDLE_VALUE) return GetLastError();
+        if (!SetupDiCreateDeviceInfoW(devices, L"Display", &kDisplayClass, nullptr,
+                owner, DICD_GENERATE_ID, &device) ||
+            !SetupDiSetDeviceRegistryPropertyW(devices, &device, SPDRP_HARDWAREID,
+                reinterpret_cast<const BYTE*>(kVirtualHardwareId), sizeof(kVirtualHardwareId)) ||
+            !SetupDiCallClassInstaller(DIF_REGISTERDEVICE, devices, &device)) {
+            const DWORD result = GetLastError();
+            SetupDiDestroyDeviceInfoList(devices);
+            return result;
+        }
+    }
+
+    BOOL restart = FALSE;
+    const BOOL installed = UpdateDriverForPlugAndPlayDevicesW(owner, kVirtualHardwareId,
+        inf.c_str(), INSTALLFLAG_FORCE | INSTALLFLAG_NONINTERACTIVE, &restart);
+    const DWORD result = installed ? (restart ? ERROR_SUCCESS_REBOOT_REQUIRED : ERROR_SUCCESS) :
+        GetLastError();
+    if (devices != INVALID_HANDLE_VALUE) {
+        if (!installed) SetupDiCallClassInstaller(DIF_REMOVE, devices, &device);
+        SetupDiDestroyDeviceInfoList(devices);
+    }
+    return result;
+}
+
+DWORD removeVirtualDevice(HWND owner) {
+    const auto display = getVirtualDisplayState();
+    if (!display.enumerated || display.matches != 1 || !hasPhysicalPrimary())
+        return ERROR_NOT_SUPPORTED;
+    wchar_t deviceId[MAX_DEVICE_ID_LEN]{};
+    if (CM_Get_Device_IDW(display.device, deviceId, MAX_DEVICE_ID_LEN, 0) != CR_SUCCESS)
+        return ERROR_NOT_FOUND;
+    const HDEVINFO devices = SetupDiCreateDeviceInfoList(&kDisplayClass, owner);
+    if (devices == INVALID_HANDLE_VALUE) return GetLastError();
+    SP_DEVINFO_DATA device{sizeof(device)};
+    SP_REMOVEDEVICE_PARAMS remove{};
+    remove.ClassInstallHeader.cbSize = sizeof(remove.ClassInstallHeader);
+    remove.ClassInstallHeader.InstallFunction = DIF_REMOVE;
+    remove.Scope = DI_REMOVEDEVICE_GLOBAL;
+    if (!SetupDiOpenDeviceInfoW(devices, deviceId, owner, 0, &device)) {
+        const DWORD result = GetLastError();
+        SetupDiDestroyDeviceInfoList(devices);
+        return result;
+    }
+    wchar_t infName[MAX_PATH]{};
+    const HKEY driverKey = SetupDiOpenDevRegKey(devices, &device, DICS_FLAG_GLOBAL, 0,
+        DIREG_DRV, KEY_QUERY_VALUE);
+    if (driverKey != INVALID_HANDLE_VALUE) {
+        DWORD bytes = sizeof(infName);
+        if (RegGetValueW(driverKey, nullptr, L"InfPath", RRF_RT_REG_SZ, nullptr, infName, &bytes)
+            != ERROR_SUCCESS) infName[0] = L'\0';
+        RegCloseKey(driverKey);
+    }
+    const BOOL removed =
+        SetupDiSetClassInstallParamsW(devices, &device, &remove.ClassInstallHeader, sizeof(remove)) &&
+        SetupDiCallClassInstaller(DIF_REMOVE, devices, &device);
+    DWORD result = removed ? ERROR_SUCCESS : GetLastError();
+    SP_DEVINSTALL_PARAMS_W params{sizeof(params)};
+    if (removed && SetupDiGetDeviceInstallParamsW(devices, &device, &params) &&
+        (params.Flags & (DI_NEEDRESTART | DI_NEEDREBOOT))) result = ERROR_SUCCESS_REBOOT_REQUIRED;
+    SetupDiDestroyDeviceInfoList(devices);
+
+    // Only remove the OEM INF bound to this exact device. Never force deletion:
+    // Windows must preserve the package if another device still uses it.
+    const std::wstring_view published(infName);
+    if (removed && published.size() > 7 && published.starts_with(L"oem") &&
+        published.ends_with(L".inf") &&
+        std::all_of(published.begin() + 3, published.end() - 4,
+            [](wchar_t digit) { return digit >= L'0' && digit <= L'9'; }) &&
+        !SetupUninstallOEMInfW(infName, 0, nullptr) && result == ERROR_SUCCESS)
+        result = GetLastError();
     return result;
 }
 
@@ -474,7 +566,7 @@ void closeTransmitter(HWND hwnd) {
                 saveSettings(iniPath(), g.settings);
             } else {
                 MessageBoxW(hwnd, L"Não foi possível desativar a tela virtual. "
-                    L"Use Configurações de Tela do Windows ou o Virtual Driver Control.",
+                    L"Tente novamente em Configurar tela virtual.",
                     L"Tela virtual", MB_OK | MB_ICONINFORMATION);
             }
         }
@@ -1032,60 +1124,96 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         else if (id == IdCaptureSource && HIWORD(wp) == CBN_SELCHANGE) updatePreview();
         else if (id == 1400 && !g.running.load()) {
             const auto display = getVirtualDisplayState();
-            const TASKDIALOG_BUTTON buttons[] = {
-                {2001, display.attached ? L"Desativar tela virtual" : L"Ativar tela virtual"},
-                {2002, L"Abrir configurações de Tela do Windows"},
-                {2003, L"Abrir Virtual Driver Control"}
-            };
+            std::vector<TASKDIALOG_BUTTON> buttons;
+            if (display.canChange)
+                buttons.push_back({2001, display.attached ?
+                    L"Desativar tela virtual\nRetire a tela da área de trabalho sem remover o driver." :
+                    L"Ativar tela virtual\nDisponibilize um monitor extra para apresentar ou transmitir."});
+            if (display.enumerated && display.matches == 0)
+                buttons.push_back({2002, L"Instalar driver\nAdicione a tela virtual ao Windows."});
+            if (display.enumerated && display.matches == 1) {
+                buttons.push_back({2003, L"Reparar driver\nReinstale o driver se a tela não aparecer ou não ativar."});
+                buttons.push_back({2004, L"Desinstalar driver\nRemova a tela virtual do Windows."});
+            }
+
             TASKDIALOGCONFIG dialog{};
             dialog.cbSize = sizeof(dialog);
             dialog.hwndParent = hwnd;
+            dialog.hInstance = GetModuleHandleW(nullptr);
+            dialog.pszMainIcon = MAKEINTRESOURCEW(1);
             dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_USE_COMMAND_LINKS |
+                TDF_POSITION_RELATIVE_TO_WINDOW |
                 (g.settings.detachVirtualOnExit ? TDF_VERIFICATION_FLAG_CHECKED : 0);
             dialog.dwCommonButtons = TDCBF_CLOSE_BUTTON;
-            dialog.pszWindowTitle = L"Configurar tela virtual";
-            dialog.pszMainInstruction = display.attached ? L"Tela virtual ativa" : L"Tela virtual inativa";
-            dialog.pszContent = display.canChange ? L"O driver permanece instalado ao desativar a tela." :
-                L"Use o utilitário oficial para instalar ou gerenciar o driver.";
-            const bool canToggle = display.canChange;
-            dialog.cButtons = canToggle ? 3 : 2;
-            dialog.pButtons = canToggle ? buttons : buttons + 1;
+            dialog.pszWindowTitle = L"1Byte Labs Transmitter · Tela virtual";
+            dialog.pszMainInstruction = display.attached ? L"Tela virtual ativa" :
+                display.matches ? L"Tela virtual inativa" : L"Configure sua tela virtual";
+            dialog.pszContent = display.attached ?
+                L"O monitor extra está disponível na lista de fontes do Transmitter e em outros aplicativos." :
+                L"Use um monitor extra para enviar slides e manter suas anotações na tela principal.";
+            dialog.pszFooter = L"Driver de vídeo: VirtualDrivers · Licença MIT";
+            dialog.cButtons = static_cast<UINT>(buttons.size());
+            dialog.pButtons = buttons.empty() ? nullptr : buttons.data();
             dialog.nDefaultButton = IDCLOSE;
             dialog.pszVerificationText = L"Desativar tela virtual ao sair";
+            dialog.cxWidth = 375;
             int choice = IDCLOSE;
             BOOL checked = g.settings.detachVirtualOnExit;
             if (FAILED(TaskDialogIndirect(&dialog, &choice, nullptr, &checked))) return 0;
             g.settings.detachVirtualOnExit = checked != FALSE;
+            collectSettings();
+
             if (choice == 2001) {
                 if (setVirtualDisplayAttached(getVirtualDisplayState(), !display.attached)) {
                     g.settings.restoreVirtualOnOpen = display.attached;
                     refreshSources();
+                    collectSettings();
                 } else {
-                    MessageBoxW(hwnd, L"O Windows não aplicou a alteração. "
-                        L"Tente pelas configurações de Tela ou pelo Virtual Driver Control.",
+                    MessageBoxW(hwnd, L"O Windows não confirmou a alteração. "
+                        L"Se a tela continuar inativa, use Reparar driver neste painel.",
                         L"Tela virtual", MB_OK | MB_ICONINFORMATION);
                 }
-            }
-            collectSettings();
-            if (choice == 2002 || choice == 2003) {
-                const bool openControl = choice == 2003;
-                const auto control = executableDirectory() / L"virtual-display" / L"VDD Control.exe";
-                std::error_code error;
-                if (openControl && !std::filesystem::is_regular_file(control, error)) {
+            } else if (choice >= 2002 && choice <= 2004) {
+                const bool removing = choice == 2004;
+                if (removing && MessageBoxW(hwnd,
+                    L"Remover a tela virtual? Ela também deixará de aparecer para outros aplicativos.",
+                    L"Desinstalar driver", MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES) return 0;
+                const auto cursor = SetCursor(LoadCursorW(nullptr, IDC_WAIT));
+                const DWORD result = removing ? removeVirtualDevice(hwnd) : installVirtualDriver(hwnd, choice == 2003);
+                bool active = false;
+                if (result == ERROR_SUCCESS && !removing) {
+                    for (int attempt = 0; attempt < 20; ++attempt) {
+                        const auto updated = getVirtualDisplayState();
+                        if (updated.attached || (updated.canChange && setVirtualDisplayAttached(updated, true))) {
+                            active = true;
+                            break;
+                        }
+                        if (updated.canChange) break;
+                        std::this_thread::sleep_for(100ms);
+                    }
+                }
+                SetCursor(cursor);
+                if (result == ERROR_SUCCESS || result == ERROR_SUCCESS_REBOOT_REQUIRED) {
+                    g.settings.restoreVirtualOnOpen = !removing && !active;
+                    refreshSources();
+                    if (active && selectedKind() == CaptureKind::Monitor) {
+                        const auto monitor = std::find_if(g.monitors.begin(), g.monitors.end(),
+                            [](const MonitorSource& source) { return source.virtualDisplay; });
+                        if (monitor != g.monitors.end())
+                            SendMessageW(g.captureSource, CB_SETCURSEL, monitor - g.monitors.begin(), 0);
+                    }
+                    collectSettings();
                     MessageBoxW(hwnd,
-                        L"O utilitário não foi encontrado. Extraia todo o pacote do Transmitter, "
-                        L"incluindo a pasta virtual-display, e tente novamente.",
-                        L"Tela virtual", MB_OK | MB_ICONWARNING);
+                        result == ERROR_SUCCESS_REBOOT_REQUIRED ? L"Reinicie o Windows para concluir a alteração." :
+                        removing ? L"Tela virtual removida." :
+                        active ? L"Tela virtual pronta para usar." :
+                        L"Driver instalado. O Windows ainda não disponibilizou a tela virtual. "
+                        L"Você pode tentar Ativar tela virtual neste painel.",
+                        L"Tela virtual", MB_OK | MB_ICONINFORMATION);
                 } else {
-                    const auto directory = control.parent_path();
-                    const INT_PTR result = reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd,
-                        openControl ? L"runas" : L"open",
-                        openControl ? control.c_str() : L"ms-settings:display", nullptr,
-                        openControl ? directory.c_str() : nullptr, SW_SHOWNORMAL));
-                    if (result <= 32)
-                        MessageBoxW(hwnd,
-                            L"O utilitário não foi aberto ou a autorização foi cancelada. Consulte TELA-VIRTUAL.md.",
-                            L"Tela virtual", MB_OK | MB_ICONWARNING);
+                    const auto message = std::wstring(L"O Windows não concluiu a operação. Código: ") +
+                        std::to_wstring(result) + L".";
+                    MessageBoxW(hwnd, message.c_str(), L"Tela virtual", MB_OK | MB_ICONWARNING);
                 }
             }
         }
@@ -1277,7 +1405,9 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 }
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR arguments, int show) {
+    if (wcscmp(arguments, L"--install-virtual-driver") == 0)
+        return static_cast<int>(installVirtualDriver(nullptr, false));
     INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_STANDARD_CLASSES};
     InitCommonControlsEx(&controls);
     gBgBrush = CreateSolidBrush(kBg);

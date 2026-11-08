@@ -34,31 +34,33 @@ Source: "..\dist-transmitter\*"; DestDir: "{app}"; Flags: ignoreversion recurses
 [Icons]
 Name: "{autoprograms}\1Byte Labs\1Byte Labs Transmitter"; Filename: "{app}\1Byte Labs Transmitter.exe"; WorkingDir: "{app}"
 
+[InstallDelete]
+Type: files; Name: "{app}\virtual-display\VDD Control.exe"
+
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
-  DriverControl: String;
 begin
   if (CurStep <> ssPostInstall) or WizardSilent or
      not WizardIsTaskSelected('virtualdisplay') then
     Exit;
-
-  MsgBox('O utilitário oficial será aberto. Na seção de vídeo, clique em ' +
-    'Install Driver se o driver ainda não estiver instalado. ' +
-    'Se ele já estiver instalado, pode fechar o utilitário. ' +
-    'Não é necessário instalar o driver de áudio.', mbInformation, MB_OK);
-  DriverControl := ExpandConstant('{app}\virtual-display\VDD Control.exe');
-  if not ShellExec('runas', DriverControl, '',
-    ExtractFileDir(DriverControl), SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode) then
-    MsgBox('O utilitário da tela virtual não foi aberto. Você pode tentar novamente ' +
-      'em Configurar tela virtual no Transmitter.', mbInformation, MB_OK);
+  if not ShellExec('runas', ExpandConstant('{app}\1Byte Labs Transmitter.exe'),
+    '--install-virtual-driver', ExpandConstant('{app}'),
+    SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode) then
+    MsgBox('A instalação da tela virtual não foi autorizada. Você pode instalá-la depois pelo Transmitter.',
+      mbInformation, MB_OK)
+  else if ResultCode = 3010 then
+    MsgBox('Reinicie o Windows para concluir a instalação da tela virtual.', mbInformation, MB_OK)
+  else if ResultCode <> 0 then
+    MsgBox('O Windows não instalou a tela virtual (código ' + IntToStr(ResultCode) +
+      '). Você pode tentar novamente em Configurar tela virtual no Transmitter.', mbInformation, MB_OK);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if (CurUninstallStep = usUninstall) and not UninstallSilent and
-     FileExists(ExpandConstant('{app}\virtual-display\VDD Control.exe')) then
-    MsgBox('O driver de tela virtual, se instalado, permanece no Windows. ' +
-      'Para removê-lo, use Uninstall Driver na seção de vídeo do Virtual Driver Control.', mbInformation, MB_OK);
+  if (CurUninstallStep = usUninstall) and not UninstallSilent then
+    MsgBox('A remoção do aplicativo preserva o driver de tela virtual. ' +
+      'Se quiser removê-lo, use Desinstalar driver em Configurar tela virtual antes de continuar.',
+      mbInformation, MB_OK);
 end;
