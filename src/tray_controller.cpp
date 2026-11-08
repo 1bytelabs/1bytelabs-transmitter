@@ -182,11 +182,6 @@ LRESULT CALLBACK subclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         return 0;
     }
 
-    if (msg == WM_SIZE && wp == SIZE_MINIMIZED) {
-        ShowWindow(hwnd, SW_HIDE);
-        return 0;
-    }
-
     if (msg == kTrayMessage) {
         if (gTrayClosing) return 0;
         const UINT event = LOWORD(lp);
