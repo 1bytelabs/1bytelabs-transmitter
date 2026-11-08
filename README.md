@@ -2,13 +2,13 @@
 
 # 1Byte Labs Transmitter
 
-**Transmissão NDI portátil com foco em simplicidade, controle e privacidade.**
+**Transmissão NDI para Windows, com instalador e versão portable.**
 
 Aplicativo da [1Byte Labs](https://github.com/1bytelabs) para transmitir vídeo e áudio pela rede local via NDI® no Windows, sem exigir a instalação do pacote completo do NDI Tools na máquina de origem.
 
-> **Versão atual: 0.4.1 Beta**
+> **Versão atual: 0.5.0 Beta**
 
-[Baixar a versão mais recente](https://github.com/1bytelabs/1bytelabs-transmitter/releases/tag/v0.4.1-beta) · [Projetos da 1Byte Labs](https://github.com/1bytelabs)
+[Baixar a versão mais recente](https://github.com/1bytelabs/1bytelabs-transmitter/releases/latest) · [Projetos da 1Byte Labs](https://github.com/1bytelabs)
 
 ## Principais recursos
 
@@ -26,7 +26,8 @@ Aplicativo da [1Byte Labs](https://github.com/1bytelabs) para transmitir vídeo 
 - permissões temporárias de privacidade por execução;
 - botão de privacidade manual para ocultar imagem e áudio sem desconectar a fonte NDI;
 - ocultação da imagem sem encerrar a fonte NDI;
-- operação em segundo plano pela bandeja do Windows;
+- minimização na barra de tarefas, com comandos também disponíveis na bandeja do Windows;
+- [tela virtual opcional](TELA-VIRTUAL.md) para enviar apresentações sem um monitor físico extra;
 - monitoramento da interface de rede e da qualidade da transmissão;
 - configurações persistentes entre execuções.
 
@@ -34,7 +35,7 @@ Na interface compacta, a opção **Enviar áudio** vem marcada por padrão. Ao d
 
 ## 1Byte Labs Receiver
 
-A versão 0.4.1 Beta também inclui o **1Byte Labs Receiver 0.1 Beta**, um receptor portátil para visualizar a fonte NDI sem instalar o NDI Tools.
+A versão 0.5.0 Beta também inclui o **1Byte Labs Receiver 0.1 Beta**, um receptor portátil para visualizar a fonte NDI sem instalar o NDI Tools.
 
 - descoberta automática das fontes NDI na rede local;
 - recepção de vídeo e áudio;

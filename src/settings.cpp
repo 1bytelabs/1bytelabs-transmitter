@@ -18,23 +18,29 @@ void writeInt(const std::filesystem::path& path, const wchar_t* key, int value) 
 AppSettings loadSettings(const std::filesystem::path& iniPath) {
     AppSettings s;
     s.sourceName = readString(iniPath, L"sourceName", L"1Byte Labs Transmitter");
-    s.captureKind = readInt(iniPath, L"captureKind", 0) == 1 ? CaptureKind::Window : CaptureKind::Monitor;
+    const int kind = readInt(iniPath, L"captureKind", 0);
+    s.captureKind = kind == 2 ? CaptureKind::VirtualMonitor :
+        kind == 1 ? CaptureKind::Window : CaptureKind::Monitor;
     s.sourceIndex = readInt(iniPath, L"sourceIndex", 0);
     s.resolutionIndex = readInt(iniPath, L"resolutionIndex", 0);
     s.fps = readInt(iniPath, L"fps", 30) == 60 ? 60 : 30;
     s.showCursor = readInt(iniPath, L"showCursor", 1) != 0;
     s.mode = readInt(iniPath, L"mode", 0) == 1 ? TransmissionMode::Quick : TransmissionMode::Protected;
     s.showHelpOnStart = readInt(iniPath, L"showHelpOnStart", 1) != 0;
+    s.detachVirtualOnExit = readInt(iniPath, L"detachVirtualOnExit", 1) != 0;
+    s.restoreVirtualOnOpen = readInt(iniPath, L"restoreVirtualOnOpen", 0) != 0;
     return s;
 }
 
 void saveSettings(const std::filesystem::path& iniPath, const AppSettings& s) {
     WritePrivateProfileStringW(L"app", L"sourceName", s.sourceName.c_str(), iniPath.c_str());
-    writeInt(iniPath, L"captureKind", s.captureKind == CaptureKind::Window ? 1 : 0);
+    writeInt(iniPath, L"captureKind", static_cast<int>(s.captureKind));
     writeInt(iniPath, L"sourceIndex", s.sourceIndex);
     writeInt(iniPath, L"resolutionIndex", s.resolutionIndex);
     writeInt(iniPath, L"fps", s.fps);
     writeInt(iniPath, L"showCursor", s.showCursor ? 1 : 0);
     writeInt(iniPath, L"mode", s.mode == TransmissionMode::Quick ? 1 : 0);
     writeInt(iniPath, L"showHelpOnStart", s.showHelpOnStart ? 1 : 0);
+    writeInt(iniPath, L"detachVirtualOnExit", s.detachVirtualOnExit ? 1 : 0);
+    writeInt(iniPath, L"restoreVirtualOnOpen", s.restoreVirtualOnOpen ? 1 : 0);
 }

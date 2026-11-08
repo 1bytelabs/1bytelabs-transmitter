@@ -22,10 +22,18 @@ bool windowMode() {
     return combo && SendMessageW(combo, CB_GETCURSEL, 0, 0) == 1;
 }
 
+bool virtualMode() {
+    if (windowMode()) return false;
+    HWND combo = gMain ? GetDlgItem(gMain, kIdCaptureSource) : nullptr;
+    if (!combo) return false;
+    const LRESULT index = SendMessageW(combo, CB_GETCURSEL, 0, 0);
+    return index >= 0 && SendMessageW(combo, CB_GETITEMDATA, index, 0) == 1;
+}
+
 void refreshPreviewMode() {
     if (!gMain) return;
     HWND preview = GetDlgItem(gMain, kIdPreview);
-    const bool window = windowMode();
+    const bool window = windowMode() || virtualMode();
 
     if (preview) ShowWindow(preview, window ? SW_SHOW : SW_HIDE);
     if (gMonitorMessage) ShowWindow(gMonitorMessage, window ? SW_HIDE : SW_SHOW);
@@ -38,6 +46,7 @@ LRESULT CALLBACK subclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                               UINT_PTR, DWORD_PTR) {
     if (msg == WM_TIMER && wp == kPreviewTimer) {
         refreshPreviewMode();
+        if (virtualMode()) return DefSubclassProc(hwnd, msg, wp, lp);
         if (!windowMode()) return 0;
         if (!gAllowNextSnapshot) return 0;
         gAllowNextSnapshot = false;

@@ -18,3 +18,14 @@ Fonte utilizada para os cabeçalhos públicos:
 
 https://github.com/DistroAV/DistroAV/tree/master/lib/ndi
 
+
+## Virtual Display Driver
+
+O pacote inclui somente os arquivos originais do driver de vídeo virtual
+assinado, extraídos da distribuição oficial 25.7.23 do projeto VirtualDrivers.
+
+Projeto e código-fonte: https://github.com/VirtualDrivers/Virtual-Display-Driver
+Distribuição: https://github.com/VirtualDrivers/Virtual-Display-Driver/releases/tag/25.7.23
+
+Copyright (c) 2024 Virtual Display. Licença MIT; texto integral em
+`virtual-display/LICENSE-VIRTUAL-DISPLAY.txt`. O Receiver não inclui o driver.

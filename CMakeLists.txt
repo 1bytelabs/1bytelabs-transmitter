@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(OneByteLabsTransmitter VERSION 0.4.1 LANGUAGES CXX)
+project(OneByteLabsTransmitter VERSION 0.5.0 LANGUAGES CXX)
 
 if(NOT WIN32)
   message(FATAL_ERROR "Este aplicativo suporta Windows 10/11 x64.")
@@ -12,7 +12,6 @@ add_executable(onebytelabs-transmitter WIN32
   src/ndi_sender_tray.cpp
   src/ip_filter.cpp
   src/protected_ip_ui.cpp
-  src/static_preview_policy.cpp
   src/tray_controller.cpp
   src/network_status_ui.cpp
   src/brand_ui_stable.cpp
@@ -69,6 +68,10 @@ target_link_libraries(onebytelabs-transmitter PRIVATE
   user32
   gdi32
   comctl32
+  setupapi
+  newdev
+  advapi32
+  cfgmgr32
   shell32
   dwmapi
   uxtheme

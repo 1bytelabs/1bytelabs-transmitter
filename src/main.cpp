@@ -2,6 +2,11 @@
 #include <commctrl.h>
 #include <dwmapi.h>
 #include <uxtheme.h>
+#include <shellapi.h>
+#include <setupapi.h>
+#include <newdev.h>
+#include <cfgmgr32.h>
+#include <cfg.h>
 
 #include <algorithm>
 #include <atomic>
@@ -12,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -104,6 +110,7 @@ struct UiState {
     std::atomic_int baselineConnections{0};
     bool activeProtectedMode{true};
     bool closeAfterWorker{false};
+    bool closing{false};
 
     std::thread worker;
     std::mutex workerMutex;
@@ -172,16 +179,21 @@ void applyDarkTheme(HWND hwnd) { SetWindowTheme(hwnd, L"DarkMode_Explorer", null
 void setControlFont(HWND hwnd, HFONT font) { SendMessageW(hwnd, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE); }
 
 CaptureKind selectedKind() {
-    return SendMessageW(g.captureKind, CB_GETCURSEL, 0, 0) == 1 ? CaptureKind::Window : CaptureKind::Monitor;
+    const LRESULT selected = SendMessageW(g.captureKind, CB_GETCURSEL, 0, 0);
+    return selected == 1 ? CaptureKind::Window : CaptureKind::Monitor;
 }
 
 void refreshSources(int preferredIndex = -1) {
     SendMessageW(g.captureSource, CB_RESETCONTENT, 0, 0);
     const CaptureKind kind = selectedKind();
-    if (kind == CaptureKind::Monitor) {
+    if (kind != CaptureKind::Window) {
         g.monitors = enumerateMonitors();
-        for (const auto& item : g.monitors)
-            SendMessageW(g.captureSource, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(item.label.c_str()));
+        for (const auto& item : g.monitors) {
+            const LRESULT index = SendMessageW(g.captureSource, CB_ADDSTRING, 0,
+                reinterpret_cast<LPARAM>(item.label.c_str()));
+            if (index >= 0) SendMessageW(g.captureSource, CB_SETITEMDATA, index,
+                item.virtualDisplay ? 1 : 0);
+        }
     } else {
         g.windows = enumerateWindows(g.window);
         for (const auto& item : g.windows)
@@ -192,6 +204,8 @@ void refreshSources(int preferredIndex = -1) {
         const int index = preferredIndex >= 0 && preferredIndex < count ? preferredIndex : 0;
         SendMessageW(g.captureSource, CB_SETCURSEL, index, 0);
     }
+    g.previewFrame.clear();
+    g.previewWidth = g.previewHeight = 0;
     if (g.preview) InvalidateRect(g.preview, nullptr, TRUE);
 }
 
@@ -199,7 +213,7 @@ CaptureSource currentSource() {
     CaptureSource source;
     source.kind = selectedKind();
     const int index = static_cast<int>(SendMessageW(g.captureSource, CB_GETCURSEL, 0, 0));
-    if (source.kind == CaptureKind::Monitor && index >= 0 && index < static_cast<int>(g.monitors.size())) {
+    if (source.kind != CaptureKind::Window && index >= 0 && index < static_cast<int>(g.monitors.size())) {
         const auto& item = g.monitors[index];
         source.monitor = item.handle;
         source.bounds = item.bounds;
@@ -329,6 +343,237 @@ void collectSettings() {
     saveSettings(iniPath(), g.settings);
 }
 
+// Match the hardware ID from the supported Virtual Display Driver INF.
+constexpr GUID kDisplayClass{0x4d36e968, 0xe325, 0x11ce,
+    {0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18}};
+constexpr wchar_t kVirtualHardwareId[] = L"ROOT\\MttVDD\0";
+struct VirtualDisplayState {
+    DEVINST device{};
+    bool attached{};
+    bool canChange{};
+    bool disabled{};
+    bool started{};
+    unsigned matches{};
+    bool enumerated{};
+};
+
+bool hasPhysicalPrimary() {
+    for (const auto& monitor : enumerateMonitors()) {
+        MONITORINFO info{sizeof(info)};
+        if (!monitor.virtualDisplay && GetMonitorInfoW(monitor.handle, &info) &&
+            (info.dwFlags & MONITORINFOF_PRIMARY)) return true;
+    }
+    return false;
+}
+
+VirtualDisplayState getVirtualDisplayState() {
+    VirtualDisplayState result;
+    const auto monitors = enumerateMonitors();
+    result.attached = std::any_of(monitors.begin(), monitors.end(),
+        [](const MonitorSource& monitor) { return monitor.virtualDisplay; });
+    const HDEVINFO devices = SetupDiGetClassDevsW(&kDisplayClass, nullptr, nullptr, DIGCF_PRESENT);
+    if (devices == INVALID_HANDLE_VALUE) return result;
+
+    for (DWORD i = 0;; ++i) {
+        SP_DEVINFO_DATA device{sizeof(device)};
+        if (!SetupDiEnumDeviceInfo(devices, i, &device)) break;
+        wchar_t ids[512]{};
+        DWORD type{};
+        if (!SetupDiGetDeviceRegistryPropertyW(devices, &device, SPDRP_HARDWAREID, &type,
+                reinterpret_cast<PBYTE>(ids), sizeof(ids) - 2 * sizeof(wchar_t), nullptr) ||
+            type != REG_MULTI_SZ) continue;
+        for (const wchar_t* id = ids; *id; id += wcslen(id) + 1) {
+            if (_wcsicmp(id, L"ROOT\\MttVDD") == 0) {
+                result.device = device.DevInst;
+                ++result.matches;
+                break;
+            }
+        }
+    }
+    result.enumerated = GetLastError() == ERROR_NO_MORE_ITEMS;
+    SetupDiDestroyDeviceInfoList(devices);
+    if (!result.enumerated || result.matches != 1) return result;
+    ULONG status{}, problem{};
+    if (CM_Get_DevNode_Status(&status, &problem, result.device, 0) != CR_SUCCESS) return result;
+    result.disabled = (status & DN_HAS_PROBLEM) && problem == CM_PROB_DISABLED;
+    result.started = (status & DN_STARTED) != 0;
+    result.canChange = hasPhysicalPrimary() && (result.disabled || result.started);
+    return result;
+}
+
+DWORD installVirtualDriver(HWND owner, bool repair) {
+    const auto display = getVirtualDisplayState();
+    if (!display.enumerated || display.matches > 1) return ERROR_INVALID_DATA;
+    if (display.matches && !repair) return ERROR_SUCCESS;
+    if (!hasPhysicalPrimary()) return ERROR_NOT_SUPPORTED;
+    const auto inf = executableDirectory() / L"virtual-display" / L"MttVDD.inf";
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(inf, error)) return ERROR_FILE_NOT_FOUND;
+
+    HDEVINFO devices = INVALID_HANDLE_VALUE;
+    SP_DEVINFO_DATA device{sizeof(device)};
+    if (!display.matches) {
+        devices = SetupDiCreateDeviceInfoList(&kDisplayClass, owner);
+        if (devices == INVALID_HANDLE_VALUE) return GetLastError();
+        if (!SetupDiCreateDeviceInfoW(devices, L"Display", &kDisplayClass, nullptr,
+                owner, DICD_GENERATE_ID, &device) ||
+            !SetupDiSetDeviceRegistryPropertyW(devices, &device, SPDRP_HARDWAREID,
+                reinterpret_cast<const BYTE*>(kVirtualHardwareId), sizeof(kVirtualHardwareId)) ||
+            !SetupDiCallClassInstaller(DIF_REGISTERDEVICE, devices, &device)) {
+            const DWORD result = GetLastError();
+            SetupDiDestroyDeviceInfoList(devices);
+            return result;
+        }
+    }
+
+    BOOL restart = FALSE;
+    const BOOL installed = UpdateDriverForPlugAndPlayDevicesW(owner, kVirtualHardwareId,
+        inf.c_str(), INSTALLFLAG_FORCE | INSTALLFLAG_NONINTERACTIVE, &restart);
+    const DWORD result = installed ? (restart ? ERROR_SUCCESS_REBOOT_REQUIRED : ERROR_SUCCESS) :
+        GetLastError();
+    if (devices != INVALID_HANDLE_VALUE) {
+        if (!installed) SetupDiCallClassInstaller(DIF_REMOVE, devices, &device);
+        SetupDiDestroyDeviceInfoList(devices);
+    }
+    return result;
+}
+
+DWORD removeVirtualDevice(HWND owner) {
+    const auto display = getVirtualDisplayState();
+    if (!display.enumerated || display.matches != 1 || !hasPhysicalPrimary())
+        return ERROR_NOT_SUPPORTED;
+    wchar_t deviceId[MAX_DEVICE_ID_LEN]{};
+    if (CM_Get_Device_IDW(display.device, deviceId, MAX_DEVICE_ID_LEN, 0) != CR_SUCCESS)
+        return ERROR_NOT_FOUND;
+    const HDEVINFO devices = SetupDiCreateDeviceInfoList(&kDisplayClass, owner);
+    if (devices == INVALID_HANDLE_VALUE) return GetLastError();
+    SP_DEVINFO_DATA device{sizeof(device)};
+    SP_REMOVEDEVICE_PARAMS remove{};
+    remove.ClassInstallHeader.cbSize = sizeof(remove.ClassInstallHeader);
+    remove.ClassInstallHeader.InstallFunction = DIF_REMOVE;
+    remove.Scope = DI_REMOVEDEVICE_GLOBAL;
+    if (!SetupDiOpenDeviceInfoW(devices, deviceId, owner, 0, &device)) {
+        const DWORD result = GetLastError();
+        SetupDiDestroyDeviceInfoList(devices);
+        return result;
+    }
+    wchar_t infName[MAX_PATH]{};
+    const HKEY driverKey = SetupDiOpenDevRegKey(devices, &device, DICS_FLAG_GLOBAL, 0,
+        DIREG_DRV, KEY_QUERY_VALUE);
+    if (driverKey != INVALID_HANDLE_VALUE) {
+        DWORD bytes = sizeof(infName);
+        if (RegGetValueW(driverKey, nullptr, L"InfPath", RRF_RT_REG_SZ, nullptr, infName, &bytes)
+            != ERROR_SUCCESS) infName[0] = L'\0';
+        RegCloseKey(driverKey);
+    }
+    const BOOL removed =
+        SetupDiSetClassInstallParamsW(devices, &device, &remove.ClassInstallHeader, sizeof(remove)) &&
+        SetupDiCallClassInstaller(DIF_REMOVE, devices, &device);
+    DWORD result = removed ? ERROR_SUCCESS : GetLastError();
+    SP_DEVINSTALL_PARAMS_W params{sizeof(params)};
+    if (removed && SetupDiGetDeviceInstallParamsW(devices, &device, &params) &&
+        (params.Flags & (DI_NEEDRESTART | DI_NEEDREBOOT))) result = ERROR_SUCCESS_REBOOT_REQUIRED;
+    SetupDiDestroyDeviceInfoList(devices);
+
+    // Only remove the OEM INF bound to this exact device. Never force deletion:
+    // Windows must preserve the package if another device still uses it.
+    const std::wstring_view published(infName);
+    if (removed && published.size() > 7 && published.starts_with(L"oem") &&
+        published.ends_with(L".inf") &&
+        std::all_of(published.begin() + 3, published.end() - 4,
+            [](wchar_t digit) { return digit >= L'0' && digit <= L'9'; }) &&
+        !SetupUninstallOEMInfW(infName, 0, nullptr) && result == ERROR_SUCCESS)
+        result = GetLastError();
+    return result;
+}
+
+bool extendVirtualDisplay() {
+    const auto monitors = enumerateMonitors();
+    const MonitorSource* neighbor = nullptr;
+    for (const auto& monitor : monitors) {
+        if (!monitor.virtualDisplay && (!neighbor || monitor.bounds.right > neighbor->bounds.right))
+            neighbor = &monitor;
+    }
+    if (!neighbor) return false;
+
+    std::wstring adapter;
+    for (DWORD index = 0;; ++index) {
+        DISPLAY_DEVICEW device{};
+        device.cb = sizeof(device);
+        if (!EnumDisplayDevicesW(nullptr, index, &device, 0)) break;
+        if (device.StateFlags & (DISPLAY_DEVICE_MIRRORING_DRIVER | DISPLAY_DEVICE_PRIMARY_DEVICE))
+            continue;
+        if (_wcsicmp(device.DeviceID, L"ROOT\\MttVDD") != 0 &&
+            wcscmp(device.DeviceString, L"Virtual Display Driver") != 0) continue;
+        if (!adapter.empty()) return false;
+        adapter = device.DeviceName;
+    }
+    if (adapter.empty()) return false;
+
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(mode);
+    if (!EnumDisplaySettingsExW(adapter.c_str(), ENUM_REGISTRY_SETTINGS, &mode, 0) ||
+        !mode.dmPelsWidth || !mode.dmPelsHeight) {
+        mode = {};
+        mode.dmSize = sizeof(mode);
+        if (!EnumDisplaySettingsExW(adapter.c_str(), 0, &mode, 0)) return false;
+    }
+    mode.dmPosition = {neighbor->bounds.right, neighbor->bounds.top};
+    mode.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT;
+    return ChangeDisplaySettingsExW(adapter.c_str(), &mode, nullptr, CDS_UPDATEREGISTRY, nullptr)
+        == DISP_CHANGE_SUCCESSFUL;
+}
+
+bool setVirtualDisplayAttached(const VirtualDisplayState& display, bool attach) {
+    if (!display.canChange) return false;
+    if (attach && display.attached) return true;
+    if (!attach && !display.attached) return false;
+    if (attach && display.disabled && CM_Enable_DevNode(display.device, 0) != CR_SUCCESS)
+        return false;
+    if (!attach && CM_Disable_DevNode(display.device, CM_DISABLE_UI_NOT_OK) != CR_SUCCESS)
+        return false;
+
+    // Starting a PnP device does not necessarily attach it to the desktop.
+    bool extensionApplied = false;
+    for (int attempt = 0; attempt < 25; ++attempt) {
+        const auto current = getVirtualDisplayState();
+        if (attach && current.attached) return true;
+        if (!attach && current.disabled && !current.attached) return true;
+        if (attach && current.canChange && current.started && !extensionApplied)
+            extensionApplied = extendVirtualDisplay();
+        std::this_thread::sleep_for(100ms);
+    }
+    return false;
+}
+
+void closeTransmitter(HWND hwnd) {
+    if (g.closing) return;
+    g.closing = true;
+    trayShutdown();
+    collectSettings();
+    if (g.settings.detachVirtualOnExit) {
+        const auto display = getVirtualDisplayState();
+        if (display.attached) {
+            const int index = g.settings.sourceIndex;
+            const bool virtualSelected = g.settings.captureKind == CaptureKind::Monitor && index >= 0 &&
+                static_cast<size_t>(index) < g.monitors.size() && g.monitors[index].virtualDisplay;
+            if (setVirtualDisplayAttached(display, false)) {
+                g.settings.restoreVirtualOnOpen = true;
+                if (virtualSelected) {
+                    g.settings.captureKind = CaptureKind::VirtualMonitor;
+                    g.settings.sourceIndex = 0;  // Only one virtual display is managed.
+                }
+                saveSettings(iniPath(), g.settings);
+            } else {
+                MessageBoxW(hwnd, L"Não foi possível desativar a tela virtual. "
+                    L"Tente novamente em Configurar tela virtual.",
+                    L"Tela virtual", MB_OK | MB_ICONINFORMATION);
+            }
+        }
+    }
+    DestroyWindow(hwnd);
+}
+
 void updateControls() {
     const bool running = g.running.load();
     const bool stopping = g.stopRequested.load();
@@ -345,6 +590,7 @@ void updateControls() {
     EnableWindow(g.captureKind, !running);
     EnableWindow(g.captureSource, !running);
     EnableWindow(g.refresh, !running);
+    EnableWindow(GetDlgItem(g.window, 1400), !running);
     EnableWindow(g.fps, !running);
     EnableWindow(g.cursor, !running);
     EnableWindow(g.protectedMode, !running);
@@ -434,9 +680,14 @@ std::vector<unsigned char> createMessageFrame(int width, int height,
 }
 
 void updatePreview() {
-    if (!g.preview || !IsWindowVisible(g.window)) return;
+    if (!g.preview || !IsWindowVisible(g.preview) || IsIconic(g.preview) || IsIconic(g.window)) return;
     CaptureSource source = currentSource();
-    if (source.bounds.right <= source.bounds.left || source.bounds.bottom <= source.bounds.top) return;
+    if (source.bounds.right <= source.bounds.left || source.bounds.bottom <= source.bounds.top) {
+        g.previewFrame.clear();
+        g.previewWidth = g.previewHeight = 0;
+        InvalidateRect(g.preview, nullptr, FALSE);
+        return;
+    }
 
     const bool blocked = trayImageHidden() || protectedContentVisible(source);
     g.previewProtected = blocked;
@@ -461,6 +712,10 @@ void updatePreview() {
         g.previewWidth = width;
         g.previewHeight = height;
         g.previewLabel = source.label;
+        InvalidateRect(g.preview, nullptr, FALSE);
+    } else {
+        g.previewFrame.clear();
+        g.previewWidth = g.previewHeight = 0;
         InvalidateRect(g.preview, nullptr, FALSE);
     }
 }
@@ -620,7 +875,7 @@ void transmissionWorker(CaptureSource source, std::wstring sourceDisplayName,
     g.rawConnections = 0;
     g.baselineConnections = 0;
     postConnectionState(0);
-    postStatus(L"Pronta para iniciar");
+    postStatus(L"Pronto para transmitir");
     PostMessageW(g.window, kWorkerEnded, 0, 0);
 }
 
@@ -734,36 +989,51 @@ void drawSmallText(HDC dc, int x, int y, const wchar_t* text, int width = 300) {
 }
 
 void createUi() {
+    addControl(L"BUTTON", L"Configurar tela virtual", BS_PUSHBUTTON,
+        36, 308, 252, 36, 1400, gFont);
+    addControl(L"BUTTON", L"Ver prévia", BS_PUSHBUTTON, 302, 308, 192, 36, 1401, gFont);
     g.help = addControl(L"BUTTON", L"?  Como usar", BS_PUSHBUTTON, 806, 20, 116, 38, IdHelp, gFont);
     g.start = addControl(L"BUTTON", L"Iniciar transmissão", BS_DEFPUSHBUTTON, 476, 18, 190, 42, IdStart, gFontBold);
-    g.sourceName = addControl(L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL, 32, 208, 466, 34, IdSourceName, gFont);
-    g.captureKind = addControl(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL, 32, 274, 140, 220, IdCaptureKind, gFont);
+    g.sourceName = addControl(L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL, 36, 204, 458, 34, IdSourceName, gFont);
+    g.captureKind = addControl(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL, 36, 264, 128, 220, IdCaptureKind, gFont);
     SendMessageW(g.captureKind, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Monitor"));
     SendMessageW(g.captureKind, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Janela"));
-    g.captureSource = addControl(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL, 182, 274, 266, 260, IdCaptureSource, gFont);
-    g.refresh = addControl(L"BUTTON", L"↻", BS_PUSHBUTTON, 458, 274, 40, 34, IdRefresh, gFontBold);
-    g.fps = addControl(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST, 32, 340, 120, 120, IdFps, gFont);
+    g.captureSource = addControl(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL, 176, 264, 270, 260, IdCaptureSource, gFont);
+    g.refresh = addControl(L"BUTTON", L"↻", BS_PUSHBUTTON, 456, 264, 38, 34, IdRefresh, gFontBold);
+    g.fps = addControl(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST, 36, 366, 106, 120, IdFps, gFont);
     SendMessageW(g.fps, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"30 FPS"));
     SendMessageW(g.fps, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"60 FPS"));
-    g.cursor = addControl(L"BUTTON", L"Mostrar cursor", BS_AUTOCHECKBOX, 166, 342, 150, 28, IdCursor, gFont);
+    g.cursor = addControl(L"BUTTON", L"Mostrar cursor", BS_AUTOCHECKBOX, 154, 368, 144, 28, IdCursor, gFont);
     g.protectedMode = addControl(L"BUTTON", L"Modo protegido",
-        BS_AUTORADIOBUTTON | WS_GROUP, 32, 402, 218, 56, IdProtected, gFont);
+        BS_AUTORADIOBUTTON | WS_GROUP, 540, 184, 174, 38, IdProtected, gFont);
     g.quickMode = addControl(L"BUTTON", L"Modo rápido",
-        BS_AUTORADIOBUTTON, 260, 402, 238, 56, IdQuick, gFont);
-    g.allowWhatsApp = addControl(L"BUTTON", L"Permitir envio do WhatsApp", BS_AUTOCHECKBOX,
-        32, 516, 226, 30, IdAllowWhatsApp, gFont);
-    g.allowTelegram = addControl(L"BUTTON", L"Permitir envio do Telegram", BS_AUTOCHECKBOX,
-        270, 516, 228, 30, IdAllowTelegram, gFont);
+        BS_AUTORADIOBUTTON, 726, 184, 180, 38, IdQuick, gFont);
+    g.allowWhatsApp = addControl(L"BUTTON", L"Permitir WhatsApp", BS_AUTOCHECKBOX,
+        540, 451, 179, 30, IdAllowWhatsApp, gFont);
+    g.allowTelegram = addControl(L"BUTTON", L"Permitir Telegram", BS_AUTOCHECKBOX,
+        726, 451, 180, 30, IdAllowTelegram, gFont);
 
-    g.release = addControl(L"BUTTON", L"Liberar transmissão", BS_PUSHBUTTON, 540, 312, 366, 38, IdRelease, gFontBold);
-    g.manualPrivacy = addControl(L"BUTTON", L"Ocultar imagem", BS_PUSHBUTTON, 754, 370, 144, 38, IdManualPrivacy, gFontBold);
-    g.preview = CreateWindowExW(0, kPreviewClass, L"", WS_CHILD | WS_VISIBLE, 548, 418, 350, 132,
-        g.window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IdPreview)), GetModuleHandleW(nullptr), nullptr);
-    g.receivers = addControl(L"STATIC", L"Nenhum receptor", SS_LEFT | SS_ENDELLIPSIS, 252, 100, 190, 22, IdReceivers, gFontBold);
-    g.status = addControl(L"STATIC", L"Pronta para iniciar", SS_LEFT | SS_ENDELLIPSIS, 32, 100, 205, 22, IdStatus, gFontBold);
+    g.release = addControl(L"BUTTON", L"Liberar transmissão", BS_PUSHBUTTON, 540, 324, 366, 38, IdRelease, gFontBold);
+    g.manualPrivacy = addControl(L"BUTTON", L"Ocultar imagem", BS_PUSHBUTTON, 540, 371, 366, 38, IdManualPrivacy, gFontBold);
+    g.receivers = addControl(L"STATIC", L"Nenhum receptor", SS_LEFT | SS_ENDELLIPSIS, 316, 99, 193, 22, IdReceivers, gFontBold);
+    g.status = addControl(L"STATIC", L"Pronto para transmitir", SS_LEFT | SS_ENDELLIPSIS, 36, 99, 262, 22, IdStatus, gFontBold);
 }
 
 LRESULT CALLBACK previewProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_CLOSE) {
+        DestroyWindow(hwnd);
+        return 0;
+    }
+    if (msg == WM_DESTROY) {
+        g.preview = nullptr;
+        g.previewFrame.clear();
+        g.previewWidth = g.previewHeight = 0;
+        return 0;
+    }
+    if (msg == WM_SIZE) {
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+    }
     if (msg == WM_ERASEBKGND) return 1;
     if (msg == WM_PAINT) {
         PAINTSTRUCT ps{};
@@ -791,10 +1061,42 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         BOOL dark = TRUE;
         DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
         g.settings = loadSettings(iniPath());
+        // Also recover installations whose previous build cleared the restore flag
+        // when PnP started, before the virtual monitor was added to the desktop.
+        bool virtualRestoreFailed = false;
+        if (g.settings.restoreVirtualOnOpen || g.settings.detachVirtualOnExit) {
+            const auto display = getVirtualDisplayState();
+            if (!display.attached && display.canChange) {
+                virtualRestoreFailed = !setVirtualDisplayAttached(display, true);
+                g.settings.restoreVirtualOnOpen = virtualRestoreFailed;
+                saveSettings(iniPath(), g.settings);
+            } else if (display.attached && g.settings.restoreVirtualOnOpen) {
+                g.settings.restoreVirtualOnOpen = false;
+                saveSettings(iniPath(), g.settings);
+            }
+        }
+        bool missingSavedVirtual = false;
+        // Migrate the old filtered virtual-monitor index to the unified monitor list.
+        if (g.settings.captureKind == CaptureKind::VirtualMonitor) {
+            const auto monitors = enumerateMonitors();
+            int virtualIndex = 0;
+            int selectedIndex = -1;
+            for (size_t i = 0; i < monitors.size(); ++i) {
+                if (monitors[i].virtualDisplay && virtualIndex++ == g.settings.sourceIndex) {
+                    selectedIndex = static_cast<int>(i);
+                    break;
+                }
+            }
+            g.settings.captureKind = CaptureKind::Monitor;
+            // Leave the source unselected if the saved virtual display is unavailable.
+            g.settings.sourceIndex = selectedIndex;
+            missingSavedVirtual = selectedIndex < 0;
+        }
         createUi();
         SetWindowTextW(g.sourceName, g.settings.sourceName.c_str());
-        SendMessageW(g.captureKind, CB_SETCURSEL, g.settings.captureKind == CaptureKind::Window ? 1 : 0, 0);
+        SendMessageW(g.captureKind, CB_SETCURSEL, static_cast<int>(g.settings.captureKind), 0);
         refreshSources(g.settings.sourceIndex);
+        if (missingSavedVirtual) SendMessageW(g.captureSource, CB_SETCURSEL, static_cast<WPARAM>(-1), 0);
         SendMessageW(g.fps, CB_SETCURSEL, g.settings.fps == 60 ? 1 : 0, 0);
         setChecked(g.cursor, g.settings.showCursor);
         setChecked(g.settings.mode == TransmissionMode::Quick ? g.quickMode : g.protectedMode, true);
@@ -804,9 +1106,15 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g.allowTg = false;
         updateControls();
         SetTimer(hwnd, kPreviewTimer, 250, nullptr);
+        if (virtualRestoreFailed) postStatus(L"Tela virtual inativa · abra Configurar tela virtual");
         if (g.settings.showHelpOnStart) PostMessageW(hwnd, WM_COMMAND, IdHelp, 0);
         return 0;
     }
+
+    case WM_DISPLAYCHANGE:
+        // Active capture validates monitor geometry and stops on topology changes.
+        if (g.captureSource && !g.running.load()) refreshSources();
+        return 0;
 
     case WM_TIMER:
         if (wp == kPreviewTimer) {
@@ -827,6 +1135,117 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         const int id = LOWORD(wp);
         if (id == IdCaptureKind && HIWORD(wp) == CBN_SELCHANGE) refreshSources();
         else if (id == IdCaptureSource && HIWORD(wp) == CBN_SELCHANGE) updatePreview();
+        else if (id == 1401) {
+            if (!g.preview) {
+                g.preview = CreateWindowExW(WS_EX_TOOLWINDOW, kPreviewClass, L"Prévia da transmissão",
+                    WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 640, 400,
+                    hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+                if (g.preview) {
+                    BOOL dark = TRUE;
+                    DwmSetWindowAttribute(g.preview, 20, &dark, sizeof(dark));
+                }
+            }
+            if (g.preview) {
+                ShowWindow(g.preview, SW_RESTORE);
+                SetForegroundWindow(g.preview);
+                updatePreview();
+            }
+        }
+        else if (id == 1400 && !g.running.load()) {
+            const auto display = getVirtualDisplayState();
+            std::vector<TASKDIALOG_BUTTON> buttons;
+            if (display.canChange)
+                buttons.push_back({2001, display.attached ?
+                    L"Desativar tela virtual\nRetire a tela da área de trabalho sem remover o driver." :
+                    L"Ativar tela virtual\nDisponibilize um monitor extra para apresentar ou transmitir."});
+            if (display.enumerated && display.matches == 0)
+                buttons.push_back({2002, L"Instalar driver\nAdicione a tela virtual ao Windows."});
+            if (display.enumerated && display.matches == 1) {
+                buttons.push_back({2003, L"Reparar driver\nReinstale o driver se a tela não aparecer ou não ativar."});
+                buttons.push_back({2004, L"Desinstalar driver\nRemova a tela virtual do Windows."});
+            }
+
+            TASKDIALOGCONFIG dialog{};
+            dialog.cbSize = sizeof(dialog);
+            dialog.hwndParent = hwnd;
+            dialog.hInstance = GetModuleHandleW(nullptr);
+            dialog.pszMainIcon = MAKEINTRESOURCEW(1);
+            dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_USE_COMMAND_LINKS |
+                TDF_POSITION_RELATIVE_TO_WINDOW |
+                (g.settings.detachVirtualOnExit ? TDF_VERIFICATION_FLAG_CHECKED : 0);
+            dialog.dwCommonButtons = TDCBF_CLOSE_BUTTON;
+            dialog.pszWindowTitle = L"1Byte Labs Transmitter · Tela virtual";
+            dialog.pszMainInstruction = display.attached ? L"Tela virtual ativa" :
+                display.matches ? L"Tela virtual inativa" : L"Configure sua tela virtual";
+            dialog.pszContent = display.attached ?
+                L"O monitor extra está disponível na lista de fontes do Transmitter e em outros aplicativos." :
+                L"Use um monitor extra para enviar slides e manter suas anotações na tela principal.";
+            dialog.pszFooter = L"Driver de vídeo: VirtualDrivers · Licença MIT";
+            dialog.cButtons = static_cast<UINT>(buttons.size());
+            dialog.pButtons = buttons.empty() ? nullptr : buttons.data();
+            dialog.nDefaultButton = IDCLOSE;
+            dialog.pszVerificationText = L"Desativar tela virtual ao sair";
+            dialog.cxWidth = 375;
+            int choice = IDCLOSE;
+            BOOL checked = g.settings.detachVirtualOnExit;
+            if (FAILED(TaskDialogIndirect(&dialog, &choice, nullptr, &checked))) return 0;
+            g.settings.detachVirtualOnExit = checked != FALSE;
+            collectSettings();
+
+            if (choice == 2001) {
+                if (setVirtualDisplayAttached(getVirtualDisplayState(), !display.attached)) {
+                    g.settings.restoreVirtualOnOpen = display.attached;
+                    refreshSources();
+                    collectSettings();
+                } else {
+                    MessageBoxW(hwnd, L"O Windows não confirmou a alteração. "
+                        L"Se a tela continuar inativa, use Reparar driver neste painel.",
+                        L"Tela virtual", MB_OK | MB_ICONINFORMATION);
+                }
+            } else if (choice >= 2002 && choice <= 2004) {
+                const bool removing = choice == 2004;
+                if (removing && MessageBoxW(hwnd,
+                    L"Remover a tela virtual? Ela também deixará de aparecer para outros aplicativos.",
+                    L"Desinstalar driver", MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES) return 0;
+                const auto cursor = SetCursor(LoadCursorW(nullptr, IDC_WAIT));
+                const DWORD result = removing ? removeVirtualDevice(hwnd) : installVirtualDriver(hwnd, choice == 2003);
+                bool active = false;
+                if (result == ERROR_SUCCESS && !removing) {
+                    for (int attempt = 0; attempt < 20; ++attempt) {
+                        const auto updated = getVirtualDisplayState();
+                        if (updated.attached || (updated.canChange && setVirtualDisplayAttached(updated, true))) {
+                            active = true;
+                            break;
+                        }
+                        if (updated.canChange) break;
+                        std::this_thread::sleep_for(100ms);
+                    }
+                }
+                SetCursor(cursor);
+                if (result == ERROR_SUCCESS || result == ERROR_SUCCESS_REBOOT_REQUIRED) {
+                    g.settings.restoreVirtualOnOpen = !removing && !active;
+                    refreshSources();
+                    if (active && selectedKind() == CaptureKind::Monitor) {
+                        const auto monitor = std::find_if(g.monitors.begin(), g.monitors.end(),
+                            [](const MonitorSource& source) { return source.virtualDisplay; });
+                        if (monitor != g.monitors.end())
+                            SendMessageW(g.captureSource, CB_SETCURSEL, monitor - g.monitors.begin(), 0);
+                    }
+                    collectSettings();
+                    MessageBoxW(hwnd,
+                        result == ERROR_SUCCESS_REBOOT_REQUIRED ? L"Reinicie o Windows para concluir a alteração." :
+                        removing ? L"Tela virtual removida." :
+                        active ? L"Tela virtual pronta para usar." :
+                        L"Driver instalado. O Windows ainda não disponibilizou a tela virtual. "
+                        L"Você pode tentar Ativar tela virtual neste painel.",
+                        L"Tela virtual", MB_OK | MB_ICONINFORMATION);
+                } else {
+                    const auto message = std::wstring(L"O Windows não concluiu a operação. Código: ") +
+                        std::to_wstring(result) + L".";
+                    MessageBoxW(hwnd, message.c_str(), L"Tela virtual", MB_OK | MB_ICONWARNING);
+                }
+            }
+        }
         else if (id == IdRefresh) refreshSources();
         else if (id == IdStart) {
             if (g.running.load()) stopTransmission(); else startTransmission();
@@ -883,70 +1302,41 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SelectObject(dc, gFontSmall);
         SetTextColor(dc, kMuted);
         RECT sub{82, 46, 450, 67};
-        DrawTextW(dc, L"Uma solução 1Byte Labs", -1, &sub, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"Envio NDI", -1, &sub, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-        drawPanel(dc, {20, 78, 924, 138});
-        drawSmallText(dc, 32, 84, L"Transmissão", 180);
-        drawSmallText(dc, 252, 84, L"Receptor", 170);
-        drawSmallText(dc, 474, 84, L"Envio", 150);
-        drawSmallText(dc, 700, 84, L"Desempenho", 180);
-        SetTextColor(dc, kText);
-        SelectObject(dc, gFontBold);
-        RECT envio{474, 100, 660, 127};
-        DrawTextW(dc, L"— Mbps", -1, &envio, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-        RECT perf{700, 100, 900, 127};
-        const wchar_t* perfText = g.stopRequested.load() ? L"Encerrando" :
-            (g.privacyBlocked.load() ? L"Privacidade ativa" : (g.running.load() ? L"Em transmissão" : L"Aguardando"));
-        DrawTextW(dc, perfText, -1, &perf, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        drawPanel(dc, {20, 78, 924, 128});
+        drawSmallText(dc, 36, 79, L"Transmissão");
+        drawSmallText(dc, 316, 79, L"Receptor", 176);
+        drawSmallText(dc, 544, 79, L"Envio", 150);
+        drawSmallText(dc, 728, 79, L"Desempenho", 180);
 
-        drawPanel(dc, {20, 150, 510, 640});
-        drawPanel(dc, {522, 150, 924, 640});
-        drawSectionTitle(dc, 32, 164, L"Configuração da transmissão");
-        drawSmallText(dc, 32, 188, L"Nome da fonte NDI", 250);
-        drawSmallText(dc, 32, 252, L"O que deseja transmitir", 260);
-        drawSmallText(dc, 32, 318, L"Qualidade", 150);
-        drawSmallText(dc, 32, 380, L"Modo de transmissão", 220);
-        drawSectionTitle(dc, 32, 478, L"Permitir envio durante esta execução");
-        drawSmallText(dc, 32, 554, L"As permissões não são salvas e reiniciam protegidas.", 450);
+        drawPanel(dc, {20, 142, 510, 500});
+        drawPanel(dc, {522, 142, 924, 500});
+        drawSectionTitle(dc, 36, 152, L"Fonte de transmissão");
+        drawSmallText(dc, 36, 181, L"Nome da fonte NDI");
+        drawSmallText(dc, 36, 241, L"Tipo", 120);
+        drawSmallText(dc, 176, 241, L"Fonte selecionada", 270);
+        drawSectionTitle(dc, 540, 152, L"Acesso e privacidade");
 
-        drawSectionTitle(dc, 540, 164, L"Controle de acesso");
-        SetTextColor(dc, kText);
-        SelectObject(dc, gFontTitle);
-        RECT number{540, 208, 906, 246};
-        DrawTextW(dc, g.rawConnections.load() == 0 ? L"0" : L"1", -1, &number, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         SelectObject(dc, gFontSmall);
         SetTextColor(dc, kMuted);
-        RECT access{550, 252, 896, 304};
-        const wchar_t* accessText = g.rawConnections.load() == 0
-            ? L"Nenhum receptor conectado. A imagem ficará em espera até sua confirmação."
+        RECT access{540, 283, 906, 321};
+        const wchar_t* accessText = isChecked(g.quickMode)
+            ? L"A imagem é enviada sem autorização prévia."
             : g.additionalConnectionLock.load()
-                ? L"Conexão adicional detectada. A transmissão permanece bloqueada."
+                ? L"Conexão adicional detectada. Envio bloqueado."
                 : g.authorized.load()
-                    ? L"Receptor autorizado. A transmissão está liberada."
-                    : L"Receptor detectado. Clique em Liberar transmissão.";
-        DrawTextW(dc, accessText, -1, &access, DT_CENTER | DT_WORDBREAK);
-
-        RECT privacy{534, 360, 912, 562};
-        HBRUSH privacyBrush = CreateSolidBrush(g.privacyBlocked.load() ? RGB(65, 43, 31) : RGB(15, 55, 43));
-        HPEN privacyPen = CreatePen(PS_SOLID, 1, g.privacyBlocked.load() ? RGB(181, 112, 45) : RGB(37, 145, 88));
-        HGDIOBJ oldPrivacyBrush = SelectObject(dc, privacyBrush);
-        HGDIOBJ oldPrivacyPen = SelectObject(dc, privacyPen);
-        RoundRect(dc, privacy.left, privacy.top, privacy.right, privacy.bottom, 14, 14);
-        SelectObject(dc, oldPrivacyBrush);
-        SelectObject(dc, oldPrivacyPen);
-        DeleteObject(privacyBrush);
-        DeleteObject(privacyPen);
-        SetTextColor(dc, g.privacyBlocked.load() ? RGB(255, 218, 176) : RGB(197, 246, 218));
+                    ? L"Receptor autorizado. Transmissão liberada."
+                    : L"Autorize o receptor antes de liberar a imagem.";
+        DrawTextW(dc, accessText, -1, &access, DT_LEFT | DT_WORDBREAK);
+        SetTextColor(dc, g.privacyBlocked.load() || trayImageHidden() ? RGB(255, 204, 144) : RGB(144, 226, 192));
         SelectObject(dc, gFontBold);
-        RECT p1{550, 370, 744, 392};
-        const wchar_t* privacyTitle = trayImageHidden() ? L"Imagem ocultada" :
-            (g.privacyBlocked.load() ? L"Conteúdo privado bloqueado" : L"Modo Privacidade ativo");
-        DrawTextW(dc, privacyTitle, -1, &p1, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-        SelectObject(dc, gFontSmall);
-        RECT p2{550, 390, 744, 412};
-        DrawTextW(dc, trayImageHidden() ? L"Imagem e áudio bloqueados." : L"WhatsApp e Telegram protegidos.", -1, &p2, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        RECT privacy{540, 418, 906, 446};
+        DrawTextW(dc, trayImageHidden() ? L"Imagem ocultada" :
+            g.privacyBlocked.load() ? L"Conteúdo privado bloqueado" : L"Privacidade ativa",
+            -1, &privacy, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
-        drawPanel(dc, {534, 572, 912, 628});
+        drawPanel(dc, {20, 511, 924, 549});
         SelectObject(dc, old);
         BitBlt(target, 0, 0, client.right, client.bottom, dc, 0, 0, SRCCOPY);
         SelectObject(dc, oldBitmap);
@@ -988,13 +1378,13 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         InvalidateRect(hwnd, nullptr, FALSE);
         if (g.closeAfterWorker) {
             g.closeAfterWorker = false;
-            collectSettings();
-            DestroyWindow(hwnd);
+            closeTransmitter(hwnd);
         }
         return 0;
     }
 
     case WM_CLOSE:
+        if (g.closing || g.closeAfterWorker) return 0;
         if (g.running.load()) {
             if (MessageBoxW(hwnd, L"Há uma transmissão ativa. Deseja parar e sair?", L"Transmissão ativa", MB_YESNO | MB_ICONQUESTION) != IDYES)
                 return 0;
@@ -1002,11 +1392,11 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             stopTransmission();
             return 0;
         }
-        collectSettings();
-        DestroyWindow(hwnd);
+        closeTransmitter(hwnd);
         return 0;
 
     case WM_DESTROY:
+        trayShutdown();
         KillTimer(hwnd, kPreviewTimer);
         PostQuitMessage(0);
         return 0;
@@ -1015,7 +1405,9 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 }
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR arguments, int show) {
+    if (wcscmp(arguments, L"--install-virtual-driver") == 0)
+        return static_cast<int>(installVirtualDriver(nullptr, false));
     INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_STANDARD_CLASSES};
     InitCommonControlsEx(&controls);
     gBgBrush = CreateSolidBrush(kBg);
@@ -1048,9 +1440,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     wc.lpszClassName = kWindowClass;
     if (!RegisterClassExW(&wc)) return 1;
 
-    HWND hwnd = CreateWindowExW(0, kWindowClass, L"Transmissor NDI Portátil — V3",
+    HWND hwnd = CreateWindowExW(0, kWindowClass, L"1Byte Labs Transmitter — Envio NDI",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN,
-        CW_USEDEFAULT, CW_USEDEFAULT, 960, 690, nullptr, nullptr, instance, nullptr);
+        CW_USEDEFAULT, CW_USEDEFAULT, 960, 594, nullptr, nullptr, instance, nullptr);
     if (!hwnd) return 1;
     ShowWindow(hwnd, show);
     UpdateWindow(hwnd);

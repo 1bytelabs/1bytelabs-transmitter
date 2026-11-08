@@ -314,20 +314,17 @@ void styleControlsOnce() {
     if (gMain) EnumChildWindows(gMain, enumProc, 0);
 }
 
-void adjustCardsOnce() {
-    if (!gMain) return;
-    if (HWND card = GetDlgItem(gMain, kIdProtected))
-        SetWindowPos(card, nullptr, 32, 402, 218, 56, SWP_NOZORDER | SWP_NOACTIVATE);
-    if (HWND card = GetDlgItem(gMain, kIdQuick))
-        SetWindowPos(card, nullptr, 260, 402, 238, 56, SWP_NOZORDER | SWP_NOACTIVATE);
-}
-
 void showLicenseNotice(HWND owner) {
     MessageBoxW(owner,
         L"1Byte Labs Transmitter utiliza tecnologia NDI® para transmissão de vídeo e áudio em rede.\n\n"
         L"1Byte Labs Transmitter é um software independente e não é afiliado, patrocinado, certificado ou desenvolvido pela Vizrt NDI AB.\n\n"
         L"NDI® é uma marca registrada da Vizrt NDI AB.\n\n"
-        L"Os avisos aplicáveis aos componentes de terceiros acompanham o aplicativo no arquivo AVISOS-DE-TERCEIROS.txt.",
+        L"Virtual Display Driver — projeto VirtualDrivers.\n"
+        L"Copyright (c) 2024 Virtual Display — licença MIT.\n"
+        L"https://github.com/VirtualDrivers/Virtual-Display-Driver\n\n"
+        L"O pacote inclui o driver de vídeo original assinado. A licença completa acompanha a pasta "
+        L"virtual-display, no arquivo LICENSE-VIRTUAL-DISPLAY.txt.\n\n"
+        L"Os demais avisos acompanham o aplicativo em AVISOS-DE-TERCEIROS.txt.",
         L"Licenças e componentes de terceiros", MB_OK | MB_ICONINFORMATION);
 }
 
@@ -380,7 +377,7 @@ LRESULT CALLBACK aboutProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (body) SelectObject(dc, body);
         SetTextColor(dc, kMuted);
         r = {28, 60, 552, 84};
-        DrawTextW(dc, L"Uma solução 1Byte Labs  ·  Versão 0.4.1 Beta", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"Uma solução 1Byte Labs  ·  Versão 0.5.0 Beta", -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
         HBRUSH panel = CreateSolidBrush(kPanel);
         HPEN pen = CreatePen(PS_SOLID, 1, kBorder);
@@ -462,7 +459,6 @@ LRESULT CALLBACK mainProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, D
     if (msg == WM_TIMER && wp == kOneShotStyleTimer) {
         KillTimer(hwnd, kOneShotStyleTimer);
         styleControlsOnce();
-        adjustCardsOnce();
         return 0;
     }
     if (msg == WM_CTLCOLORLISTBOX) {
@@ -483,7 +479,7 @@ LRESULT CALLBACK mainProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, D
 void install(HWND hwnd) {
     if (gMain || !hwnd) return;
     gMain = hwnd;
-    SetWindowTextW(hwnd, L"1Byte Labs Transmitter — V3");
+    SetWindowTextW(hwnd, L"1Byte Labs Transmitter — Envio NDI");
 
     HFONT font = makeFont(15, FW_SEMIBOLD);
     HWND about = CreateWindowExW(0, L"BUTTON", L"Sobre", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
@@ -495,7 +491,6 @@ void install(HWND hwnd) {
     if (HWND start = GetDlgItem(hwnd, kIdStart))
         SetWindowPos(start, nullptr, 456, 18, 210, 42, SWP_NOZORDER | SWP_NOACTIVATE);
     styleControlsOnce();
-    adjustCardsOnce();
     // Uma única segunda passada pega controles auxiliares criados logo após o WM_CREATE.
     SetTimer(hwnd, kOneShotStyleTimer, 450, nullptr);
     InvalidateRect(hwnd, nullptr, FALSE);

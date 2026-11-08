@@ -3,13 +3,15 @@
 #include <string>
 #include <vector>
 
-enum class CaptureKind { Monitor, Window };
+enum class CaptureKind { Monitor, Window, VirtualMonitor };
 enum class TransmissionMode { Protected, Quick };
 
 struct MonitorSource {
+    // True only for the supported VirtualDrivers display adapter.
     HMONITOR handle{};
     RECT bounds{};
     std::wstring label;
+    bool virtualDisplay{false};
 };
 
 struct WindowSource {
@@ -35,4 +37,6 @@ struct AppSettings {
     bool showCursor{true};
     TransmissionMode mode{TransmissionMode::Protected};
     bool showHelpOnStart{true};
+    bool detachVirtualOnExit{true};
+    bool restoreVirtualOnOpen{false};
 };

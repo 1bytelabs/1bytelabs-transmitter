@@ -24,6 +24,7 @@ HWND gMain{};
 HHOOK gHook{};
 NOTIFYICONDATAW gTray{};
 UINT gTaskbarCreated{};
+bool gTrayClosing{};
 std::atomic_bool gHidden{false};
 std::mutex gFrameMutex;
 std::vector<std::uint8_t> gHiddenFrame;
@@ -54,7 +55,7 @@ bool transmissionRunning() {
 }
 
 void addTrayIcon() {
-    if (!gMain) return;
+    if (!gMain || gTrayClosing) return;
     gTray = {};
     gTray.cbSize = sizeof(gTray);
     gTray.hWnd = gMain;
@@ -181,12 +182,8 @@ LRESULT CALLBACK subclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         return 0;
     }
 
-    if (msg == WM_SIZE && wp == SIZE_MINIMIZED) {
-        ShowWindow(hwnd, SW_HIDE);
-        return 0;
-    }
-
     if (msg == kTrayMessage) {
+        if (gTrayClosing) return 0;
         const UINT event = LOWORD(lp);
         if (event == WM_LBUTTONDBLCLK || event == WM_LBUTTONUP) showMainWindow();
         else if (event == WM_RBUTTONUP || event == WM_CONTEXTMENU) showTrayMenu();
@@ -262,6 +259,11 @@ struct TrayBootstrap {
         if (gHook) UnhookWindowsHookEx(gHook);
     }
 } gBootstrap;
+}
+
+void trayShutdown() {
+    gTrayClosing = true;
+    removeTrayIcon();
 }
 
 bool trayImageHidden() {

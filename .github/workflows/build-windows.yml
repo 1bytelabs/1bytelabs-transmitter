@@ -37,6 +37,35 @@ jobs:
             -OutFile $packagePath
           Expand-Archive -Path $packagePath -DestinationPath $ndiRuntimeDir -Force
 
+      - name: Preparar somente o driver de vídeo virtual assinado
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $ProgressPreference = "SilentlyContinue"
+          $vddZip = "$env:RUNNER_TEMP\vdd-control.zip"
+          $vddDir = "$env:RUNNER_TEMP\vdd-control"
+          Invoke-WebRequest -Uri "https://github.com/VirtualDrivers/Virtual-Display-Driver/releases/download/25.7.23/VDD.Control.25.7.23.zip" -OutFile $vddZip
+          $expected = "a701f2272e9fcf382849b24f913c6dd07597b3b1116525f2e90182f019609154"
+          if ((Get-FileHash $vddZip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
+            throw "O pacote do VDD não corresponde à versão fixada."
+          }
+          Expand-Archive -Path $vddZip -DestinationPath $vddDir -Force
+          $drivers = @(Get-ChildItem $vddDir -Filter "MttVDD.inf" -File -Recurse |
+            Where-Object { (Get-Content $_.FullName -Raw) -match '(?i)\.NTamd64' })
+          if ($drivers.Count -ne 1) {
+            throw "Driver MttVDD x64 ausente ou ambíguo. INFs: $((Get-ChildItem $vddDir -Filter *.inf -Recurse).FullName -join ', ')"
+          }
+          $driverDir = $drivers[0].DirectoryName
+          $cat = Join-Path $driverDir "MttVDD.cat"
+          if ((Get-AuthenticodeSignature $cat).Status -ne "Valid") {
+            throw "Assinatura do catálogo do driver inválida."
+          }
+          $out = New-Item -ItemType Directory -Force -Path "dist-transmitter\virtual-display"
+          foreach ($file in @("MttVDD.inf", "MttVDD.cat", "MttVDD.dll")) {
+            Copy-Item -LiteralPath (Join-Path $driverDir $file) -Destination $out.FullName
+          }
+          Copy-Item "third_party\virtual-display\LICENSE.txt" (Join-Path $out.FullName "LICENSE-VIRTUAL-DISPLAY.txt")
+
       - name: Montar pacotes portáteis
         shell: pwsh
         run: |
@@ -70,10 +99,47 @@ jobs:
             $ndiDll.FullName `
             "dist-receiver\Processing.NDI.Lib.x64.dll"
 
+          Copy-Item "TELA-VIRTUAL.md" "dist-transmitter\TELA-VIRTUAL.md"
           Copy-Item "README-TESTE.txt" "dist-transmitter\LEIA-ME.txt"
           Copy-Item "README-RECEIVER-TESTE.txt" "dist-receiver\LEIA-ME.txt"
           Copy-Item "THIRD_PARTY_NOTICES.md" "dist-transmitter\AVISOS-DE-TERCEIROS.txt"
           Copy-Item "THIRD_PARTY_NOTICES.md" "dist-receiver\AVISOS-DE-TERCEIROS.txt"
+
+      - name: Compilar instalador do Transmitter
+        shell: pwsh
+        run: |
+          $version = [regex]::Match((Get-Content CMakeLists.txt -Raw), 'project\(OneByteLabsTransmitter VERSION (\d+\.\d+\.\d+)').Groups[1].Value
+          if (-not $version) { throw "Versão do Transmitter não localizada." }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Inno Setup 6 não encontrado na imagem Windows." }
+          & $iscc "/DTransmitterVersion=$version" installer\transmitter.iss
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao compilar o instalador." }
+
+      - name: Testar instalação e remoção do aplicativo sem driver
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $testDir = Join-Path $env:RUNNER_TEMP "transmitter-install-test"
+          $setup = "dist-installer\1ByteLabs-Transmitter-Setup-Windows-x64.exe"
+          $result = Start-Process $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$testDir`"" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Falha na instalação: $($result.ExitCode)" }
+          foreach ($file in @("1Byte Labs Transmitter.exe", "Processing.NDI.Lib.x64.dll", "virtual-display\MttVDD.inf", "virtual-display\MttVDD.cat", "virtual-display\MttVDD.dll", "virtual-display\LICENSE-VIRTUAL-DISPLAY.txt")) {
+            if (-not (Test-Path (Join-Path $testDir $file))) { throw "Arquivo não instalado: $file" }
+          }
+          $uninstall = @(Get-ChildItem $testDir -Filter "unins*.exe")
+          if ($uninstall.Count -ne 1) { throw "Desinstalador ausente ou ambíguo." }
+          $result = Start-Process $uninstall[0].FullName -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait -PassThru
+          if ($result.ExitCode -ne 0 -or (Test-Path (Join-Path $testDir "1Byte Labs Transmitter.exe"))) {
+            throw "Falha na desinstalação: $($result.ExitCode)"
+          }
+
+      - name: Publicar instalador de teste do Transmitter
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1ByteLabs-Transmitter-Setup-Windows-x64
+          path: dist-installer/1ByteLabs-Transmitter-Setup-Windows-x64.exe
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Publicar artifact de teste
         uses: actions/upload-artifact@v4
@@ -91,39 +157,54 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Compactar pacote da release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Compactar pacotes da release
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v0.5.0-beta'))
         shell: pwsh
+        env:
+          BUILD_REF: ${{ github.ref }}
+          BUILD_REF_NAME: ${{ github.ref_name }}
         run: |
-          Compress-Archive `
-            -Path "dist-transmitter\*" `
-            -DestinationPath "1ByteLabs-Transmitter-${{ github.ref_name }}-Windows-x64.zip" `
-            -Force
+          $tag = if ($env:BUILD_REF.StartsWith("refs/tags/")) { $env:BUILD_REF_NAME } else { "v0.5.0-beta" }
+          Compress-Archive -Path "dist-transmitter\*" -DestinationPath "1ByteLabs-Transmitter-$tag-Windows-x64.zip" -Force
+          Compress-Archive -Path "dist-receiver\*" -DestinationPath "1ByteLabs-Receiver-$tag-Windows-x64.zip" -Force
+          Copy-Item "dist-installer\1ByteLabs-Transmitter-Setup-Windows-x64.exe" "1ByteLabs-Transmitter-$tag-Setup-Windows-x64.exe"
 
-          Compress-Archive `
-            -Path "dist-receiver\*" `
-            -DestinationPath "1ByteLabs-Receiver-${{ github.ref_name }}-Windows-x64.zip" `
-            -Force
-
-      - name: Anexar pacote à release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Publicar 0.5.0 Beta
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v0.5.0-beta')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $transmitterAsset = "1ByteLabs-Transmitter-$tag-Windows-x64.zip"
-          $receiverAsset = "1ByteLabs-Receiver-$tag-Windows-x64.zip"
+          $tag = "v0.5.0-beta"
+          gh release view $tag --repo "$env:GITHUB_REPOSITORY" 2>$null
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          gh release create $tag `
+            "1ByteLabs-Transmitter-$tag-Setup-Windows-x64.exe" `
+            "1ByteLabs-Transmitter-$tag-Windows-x64.zip" `
+            "1ByteLabs-Receiver-$tag-Windows-x64.zip" `
+            --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" `
+            --title "1Byte Labs Transmitter 0.5.0 Beta" `
+            --notes-file "docs/releases/$tag.md" --latest
+          exit $LASTEXITCODE
 
+      - name: Anexar pacotes à release por tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $tag = $env:RELEASE_TAG
           for ($attempt = 1; $attempt -le 12; $attempt++) {
-            gh release view $tag --repo "${{ github.repository }}" 2>$null
+            gh release view $tag --repo "$env:GITHUB_REPOSITORY" 2>$null
             if ($LASTEXITCODE -eq 0) {
-              gh release upload $tag $transmitterAsset $receiverAsset `
-                --repo "${{ github.repository }}" `
-                --clobber
+              gh release upload $tag `
+                "1ByteLabs-Transmitter-$tag-Setup-Windows-x64.exe" `
+                "1ByteLabs-Transmitter-$tag-Windows-x64.zip" `
+                "1ByteLabs-Receiver-$tag-Windows-x64.zip" `
+                --repo "$env:GITHUB_REPOSITORY" --clobber
               exit $LASTEXITCODE
             }
             Start-Sleep -Seconds 5
           }
-
           throw "A release $tag não ficou disponível a tempo para receber o pacote."

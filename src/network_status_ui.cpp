@@ -235,10 +235,10 @@ void installUi(HWND hwnd) {
     if (HWND fps = GetDlgItem(hwnd, kIdFps)) {
         if (HFONT candidate = reinterpret_cast<HFONT>(SendMessageW(fps, WM_GETFONT, 0, 0))) normal = candidate;
     }
-    gTopSend = addStatic(hwnd, kTopSendId, 474, 100, 186, 27, normal);
-    gTopPerformance = addStatic(hwnd, kTopPerformanceId, 700, 100, 200, 27, normal);
-    gFooterPrimary = addStatic(hwnd, kFooterPrimaryId, 548, 580, 350, 22, normal);
-    gFooterSecondary = addStatic(hwnd, kFooterSecondaryId, 548, 604, 350, 20, normal);
+    gTopSend = addStatic(hwnd, kTopSendId, 544, 99, 168, 22, normal);
+    gTopPerformance = addStatic(hwnd, kTopPerformanceId, 728, 99, 178, 22, normal);
+    gFooterPrimary = addStatic(hwnd, kFooterPrimaryId, 36, 520, 390, 22, normal);
+    gFooterSecondary = addStatic(hwnd, kFooterSecondaryId, 438, 520, 468, 22, normal);
     SetWindowSubclass(hwnd, subclassProc, 3, 0);
     SetTimer(hwnd, kNetworkTimer, 1000, nullptr);
     updateNetworkStatus();
