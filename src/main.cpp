@@ -342,7 +342,7 @@ struct VirtualDisplayState {
     std::wstring device;
     bool attached{};
     bool canChange{};
-    POINT extendPosition{};
+    POINTL extendPosition{};
 };
 
 VirtualDisplayState getVirtualDisplayState() {
