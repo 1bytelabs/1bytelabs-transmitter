@@ -43,8 +43,9 @@ automático da tela ainda precisam de validação em um computador Windows.
 a tela, abrir Tela no Windows ou abrir o Virtual Driver Control. A opção
 **Desativar tela virtual ao sair** vem marcada e vale ao encerrar o aplicativo
 normalmente, inclusive pela bandeja. O driver fica instalado. Se o Transmitter
-desativar a tela, tenta reativá-la na próxima abertura. A reativação coloca a
-tela ao lado dos monitores físicos; o Windows pode precisar ajustar a posição.
+desativar a tela, tenta reativá-la na próxima abertura. A reativação deixa a
+tela novamente disponível no Windows. Se necessário, selecione **Estender**
+nas configurações de Tela.
 
 O controle direto é limitado a uma tela virtual do driver suportado e requer
 um monitor físico como principal. Se o Windows rejeitar a alteração, use

@@ -3,6 +3,9 @@
 #include <dwmapi.h>
 #include <uxtheme.h>
 #include <shellapi.h>
+#include <setupapi.h>
+#include <cfgmgr32.h>
+#include <cfg.h>
 
 #include <algorithm>
 #include <atomic>
@@ -105,6 +108,7 @@ struct UiState {
     std::atomic_int baselineConnections{0};
     bool activeProtectedMode{true};
     bool closeAfterWorker{false};
+    bool closing{false};
 
     std::thread worker;
     std::mutex workerMutex;
@@ -337,73 +341,86 @@ void collectSettings() {
     saveSettings(iniPath(), g.settings);
 }
 
-// Reconfigure only the supported virtual display. The driver remains installed.
+// Match the hardware ID from the supported Virtual Display Driver INF.
 struct VirtualDisplayState {
-    std::wstring device;
+    DEVINST device{};
     bool attached{};
     bool canChange{};
-    POINTL extendPosition{};
+    bool disabled{};
 };
+
+bool hasPhysicalPrimary() {
+    for (const auto& monitor : enumerateMonitors()) {
+        MONITORINFO info{sizeof(info)};
+        if (!monitor.virtualDisplay && GetMonitorInfoW(monitor.handle, &info) &&
+            (info.dwFlags & MONITORINFOF_PRIMARY)) return true;
+    }
+    return false;
+}
 
 VirtualDisplayState getVirtualDisplayState() {
     VirtualDisplayState result;
-    bool physicalPrimary = false;
-    bool haveNeighbor = false;
-    DWORD count = 0;
+    constexpr GUID displayClass{0x4d36e968, 0xe325, 0x11ce,
+        {0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18}};
+    const auto monitors = enumerateMonitors();
+    result.attached = std::any_of(monitors.begin(), monitors.end(),
+        [](const MonitorSource& monitor) { return monitor.virtualDisplay; });
+    const HDEVINFO devices = SetupDiGetClassDevsW(&displayClass, nullptr, nullptr, DIGCF_PRESENT);
+    if (devices == INVALID_HANDLE_VALUE) return result;
+    unsigned matches = 0;
     for (DWORD i = 0;; ++i) {
-        DISPLAY_DEVICEW device{};
-        device.cb = sizeof(device);
-        if (!EnumDisplayDevicesW(nullptr, i, &device, 0)) break;
-        if (device.StateFlags & DISPLAY_DEVICE_MIRRORING_DRIVER) continue;
-        const bool attached = (device.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) != 0;
-        const bool isVirtual = wcsstr(device.DeviceID, L"MttVDD") != nullptr ||
-            wcscmp(device.DeviceString, L"Virtual Display Driver") == 0;
-        if (isVirtual) {
-            ++count;
-            result.device = device.DeviceName;
-            result.attached = attached;
-        } else if (attached) {
-            physicalPrimary |= (device.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) != 0;
-            DEVMODEW mode{};
-            mode.dmSize = sizeof(mode);
-            if (EnumDisplaySettingsExW(device.DeviceName, ENUM_CURRENT_SETTINGS, &mode, 0)) {
-                const LONG right = mode.dmPosition.x + static_cast<LONG>(mode.dmPelsWidth);
-                if (!haveNeighbor || right > result.extendPosition.x) {
-                    result.extendPosition = {right, mode.dmPosition.y};
-                    haveNeighbor = true;
-                }
+        SP_DEVINFO_DATA device{sizeof(device)};
+        if (!SetupDiEnumDeviceInfo(devices, i, &device)) break;
+        wchar_t ids[512]{};
+        DWORD type{};
+        if (!SetupDiGetDeviceRegistryPropertyW(devices, &device, SPDRP_HARDWAREID, &type,
+                reinterpret_cast<PBYTE>(ids), sizeof(ids) - 2 * sizeof(wchar_t), nullptr) ||
+            type != REG_MULTI_SZ) continue;
+        for (const wchar_t* id = ids; *id; id += wcslen(id) + 1) {
+            if (_wcsicmp(id, L"ROOT\\MttVDD") == 0) {
+                result.device = device.DevInst;
+                ++matches;
+                break;
             }
         }
     }
-    result.canChange = count == 1 && physicalPrimary && haveNeighbor;
+    SetupDiDestroyDeviceInfoList(devices);
+    if (matches != 1) return result;
+    ULONG status{}, problem{};
+    if (CM_Get_DevNode_Status(&status, &problem, result.device, 0) != CR_SUCCESS) return result;
+    result.disabled = (status & DN_HAS_PROBLEM) && problem == CM_PROB_DISABLED;
+    result.canChange = result.disabled || hasPhysicalPrimary();
     return result;
 }
 
 bool setVirtualDisplayAttached(const VirtualDisplayState& display, bool attach) {
-    if (!display.canChange || display.attached == attach) return false;
-    DEVMODEW mode{};
-    mode.dmSize = sizeof(mode);
-    if (attach) {
-        if (!EnumDisplaySettingsExW(display.device.c_str(), ENUM_REGISTRY_SETTINGS, &mode, 0) ||
-            !mode.dmPelsWidth || !mode.dmPelsHeight) {
-            mode = {};
-            mode.dmSize = sizeof(mode);
-            if (!EnumDisplaySettingsExW(display.device.c_str(), 0, &mode, 0)) return false;
+    if (!display.canChange) return false;
+    if (!attach && (!display.attached || !hasPhysicalPrimary())) return false;
+    if (attach && !display.disabled) return display.attached;
+    const CONFIGRET change = attach ? CM_Enable_DevNode(display.device, 0) :
+        CM_Disable_DevNode(display.device, CM_DISABLE_UI_NOT_OK);
+    if (change != CR_SUCCESS) return false;
+
+    // PnP and the Windows desktop can finish updating at different times.
+    for (int attempt = 0; attempt < 15; ++attempt) {
+        ULONG status{}, problem{};
+        if (CM_Get_DevNode_Status(&status, &problem, display.device, 0) == CR_SUCCESS) {
+            if (attach && (status & DN_STARTED)) return true;
+            if (!attach && (status & DN_HAS_PROBLEM) && problem == CM_PROB_DISABLED) {
+                const auto monitors = enumerateMonitors();
+                if (std::none_of(monitors.begin(), monitors.end(),
+                    [](const MonitorSource& monitor) { return monitor.virtualDisplay; })) return true;
+            }
         }
-        mode.dmPosition = display.extendPosition;
-        mode.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT;
-    } else {
-        if (!EnumDisplaySettingsExW(display.device.c_str(), ENUM_CURRENT_SETTINGS, &mode, 0)) return false;
-        mode.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT;
-        mode.dmPelsWidth = mode.dmPelsHeight = 0;
+        std::this_thread::sleep_for(100ms);
     }
-    if (ChangeDisplaySettingsExW(display.device.c_str(), &mode, nullptr, CDS_TEST, nullptr)
-        != DISP_CHANGE_SUCCESSFUL) return false;
-    return ChangeDisplaySettingsExW(display.device.c_str(), &mode, nullptr, CDS_UPDATEREGISTRY, nullptr)
-        == DISP_CHANGE_SUCCESSFUL;
+    return false;
 }
 
 void closeTransmitter(HWND hwnd) {
+    if (g.closing) return;
+    g.closing = true;
+    trayShutdown();
     collectSettings();
     if (g.settings.detachVirtualOnExit) {
         const auto display = getVirtualDisplayState();
@@ -983,10 +1000,11 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             dialog.dwCommonButtons = TDCBF_CLOSE_BUTTON;
             dialog.pszWindowTitle = L"Configurar tela virtual";
             dialog.pszMainInstruction = display.attached ? L"Tela virtual ativa" : L"Tela virtual inativa";
-            dialog.pszContent = display.canChange ? L"O driver permanece instalado ao desativar a tela." :
+            dialog.pszContent = (display.canChange && (display.attached || display.disabled)) ? L"O driver permanece instalado ao desativar a tela." :
                 L"Use o utilitário oficial para instalar ou gerenciar o driver.";
-            dialog.cButtons = display.canChange ? 3 : 2;
-            dialog.pButtons = display.canChange ? buttons : buttons + 1;
+            const bool canToggle = display.canChange && (display.attached || display.disabled);
+            dialog.cButtons = canToggle ? 3 : 2;
+            dialog.pButtons = canToggle ? buttons : buttons + 1;
             dialog.nDefaultButton = IDCLOSE;
             dialog.pszVerificationText = L"Desativar tela virtual ao sair";
             int choice = IDCLOSE;
@@ -1193,6 +1211,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
 
     case WM_CLOSE:
+        if (g.closing || g.closeAfterWorker) return 0;
         if (g.running.load()) {
             if (MessageBoxW(hwnd, L"Há uma transmissão ativa. Deseja parar e sair?", L"Transmissão ativa", MB_YESNO | MB_ICONQUESTION) != IDYES)
                 return 0;
@@ -1204,6 +1223,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
 
     case WM_DESTROY:
+        trayShutdown();
         KillTimer(hwnd, kPreviewTimer);
         PostQuitMessage(0);
         return 0;

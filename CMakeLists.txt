@@ -69,6 +69,8 @@ target_link_libraries(onebytelabs-transmitter PRIVATE
   user32
   gdi32
   comctl32
+  setupapi
+  cfgmgr32
   shell32
   dwmapi
   uxtheme

@@ -5,6 +5,7 @@
 
 // Integração da bandeja do Windows e do modo manual "Ocultar imagem".
 // O estado não é persistido entre transmissões.
+void trayShutdown();
 bool trayImageHidden();
 void traySetImageHidden(bool hidden);
 void traySetSourceName(const std::string& sourceNameUtf8);
