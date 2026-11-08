@@ -12,7 +12,6 @@ add_executable(onebytelabs-transmitter WIN32
   src/ndi_sender_tray.cpp
   src/ip_filter.cpp
   src/protected_ip_ui.cpp
-  src/static_preview_policy.cpp
   src/tray_controller.cpp
   src/network_status_ui.cpp
   src/brand_ui_stable.cpp

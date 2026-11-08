@@ -314,14 +314,6 @@ void styleControlsOnce() {
     if (gMain) EnumChildWindows(gMain, enumProc, 0);
 }
 
-void adjustCardsOnce() {
-    if (!gMain) return;
-    if (HWND card = GetDlgItem(gMain, kIdProtected))
-        SetWindowPos(card, nullptr, 32, 402, 218, 56, SWP_NOZORDER | SWP_NOACTIVATE);
-    if (HWND card = GetDlgItem(gMain, kIdQuick))
-        SetWindowPos(card, nullptr, 260, 402, 238, 56, SWP_NOZORDER | SWP_NOACTIVATE);
-}
-
 void showLicenseNotice(HWND owner) {
     MessageBoxW(owner,
         L"1Byte Labs Transmitter utiliza tecnologia NDI® para transmissão de vídeo e áudio em rede.\n\n"
@@ -467,7 +459,6 @@ LRESULT CALLBACK mainProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, D
     if (msg == WM_TIMER && wp == kOneShotStyleTimer) {
         KillTimer(hwnd, kOneShotStyleTimer);
         styleControlsOnce();
-        adjustCardsOnce();
         return 0;
     }
     if (msg == WM_CTLCOLORLISTBOX) {
@@ -488,7 +479,7 @@ LRESULT CALLBACK mainProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, D
 void install(HWND hwnd) {
     if (gMain || !hwnd) return;
     gMain = hwnd;
-    SetWindowTextW(hwnd, L"1Byte Labs Transmitter — V3");
+    SetWindowTextW(hwnd, L"1Byte Labs Transmitter — Envio NDI");
 
     HFONT font = makeFont(15, FW_SEMIBOLD);
     HWND about = CreateWindowExW(0, L"BUTTON", L"Sobre", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
@@ -500,7 +491,6 @@ void install(HWND hwnd) {
     if (HWND start = GetDlgItem(hwnd, kIdStart))
         SetWindowPos(start, nullptr, 456, 18, 210, 42, SWP_NOZORDER | SWP_NOACTIVATE);
     styleControlsOnce();
-    adjustCardsOnce();
     // Uma única segunda passada pega controles auxiliares criados logo após o WM_CREATE.
     SetTimer(hwnd, kOneShotStyleTimer, 450, nullptr);
     InvalidateRect(hwnd, nullptr, FALSE);

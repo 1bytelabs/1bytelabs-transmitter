@@ -37,10 +37,11 @@ constexpr COLORREF kPanel = RGB(19, 27, 39);
 constexpr COLORREF kBorder = RGB(45, 58, 76);
 constexpr COLORREF kControl = RGB(25, 36, 51);
 constexpr COLORREF kControlPressed = RGB(34, 48, 66);
-constexpr COLORREF kAccentBright = RGB(45, 211, 143);
+constexpr COLORREF kAccentBright = RGB(88, 166, 255);
+constexpr COLORREF kSignal = RGB(46, 219, 151);
 constexpr COLORREF kText = RGB(241, 245, 249);
 constexpr COLORREF kMuted = RGB(148, 163, 184);
-constexpr COLORREF kAccent = RGB(38, 177, 120);
+constexpr COLORREF kAccent = RGB(28, 113, 232);
 
 enum ControlId {
     IdSources = 1001,
@@ -322,24 +323,90 @@ void setFont(HWND control, HFONT font) {
 void setStatus(const std::wstring& status, const std::wstring& details = {}) {
     SetWindowTextW(g.status, status.c_str());
     SetWindowTextW(g.details, details.c_str());
+    RECT client{};
+    GetClientRect(g.window, &client);
+    RECT badge{client.right - 160, 20, client.right - 16, 65};
+    InvalidateRect(g.window, &badge, FALSE);
+    RECT dot{18, client.bottom - 39, 32, client.bottom - 20};
+    InvalidateRect(g.window, &dot, FALSE);
 }
 
-void roundControl(HWND control, int width, int height, int radius = 16) {
-    HRGN region = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius, radius);
-    SetWindowRgn(control, region, TRUE);
+void surface(HDC dc, RECT rect, COLORREF fill, COLORREF stroke, int radius = 12) {
+    HBRUSH brush = CreateSolidBrush(fill);
+    HPEN pen = CreatePen(PS_SOLID, 1, stroke);
+    auto oldBrush = SelectObject(dc, brush);
+    auto oldPen = SelectObject(dc, pen);
+    RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, radius, radius);
+    SelectObject(dc, oldPen);
+    SelectObject(dc, oldBrush);
+    DeleteObject(pen);
+    DeleteObject(brush);
+}
+
+void label(HDC dc, RECT rect, const wchar_t* value, HFONT font, COLORREF color,
+    UINT alignment = DT_LEFT) {
+    auto old = SelectObject(dc, font);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, color);
+    DrawTextW(dc, value, -1, &rect, alignment | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+    SelectObject(dc, old);
+}
+
+std::wstring comboText(HWND combo, LRESULT index) {
+    if (index < 0) return {};
+    const LRESULT size = SendMessageW(combo, CB_GETLBTEXTLEN, index, 0);
+    if (size < 0) return {};
+    std::wstring result(static_cast<size_t>(size) + 1, L'\0');
+    if (SendMessageW(combo, CB_GETLBTEXT, index, reinterpret_cast<LPARAM>(result.data())) < 0)
+        return {};
+    result.resize(static_cast<size_t>(size));
+    return result;
+}
+
+LRESULT CALLBACK comboProc(HWND combo, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR id, DWORD_PTR) {
+    if (msg == WM_ERASEBKGND || msg == WM_NCPAINT) return 0;
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps{};
+        HDC dc = BeginPaint(combo, &ps);
+        RECT r{};
+        GetClientRect(combo, &r);
+        FillRect(dc, &r, gPanelBrush);
+        surface(dc, r, kBackground, GetFocus() == combo ? kAccentBright : kBorder, 9);
+        const auto value = comboText(combo, SendMessageW(combo, CB_GETCURSEL, 0, 0));
+        const wchar_t* placeholder = GetDlgCtrlID(combo) == IdSources ? L"Nenhuma fonte NDI disponível" : L"Selecione um monitor";
+        label(dc, {12, 0, r.right - 30, r.bottom}, value.empty() ? placeholder : value.c_str(),
+            gFont, value.empty() ? kMuted : kText);
+        HPEN arrow = CreatePen(PS_SOLID, 2, kMuted);
+        auto old = SelectObject(dc, arrow);
+        const LONG x = r.right - 16, y = r.bottom / 2;
+        MoveToEx(dc, x - 4, y - 2, nullptr);
+        LineTo(dc, x, y + 2);
+        LineTo(dc, x + 5, y - 3);
+        SelectObject(dc, old);
+        DeleteObject(arrow);
+        EndPaint(combo, &ps);
+        return 0;
+    }
+    if (msg == WM_NCDESTROY) RemoveWindowSubclass(combo, comboProc, id);
+    const auto result = DefSubclassProc(combo, msg, wp, lp);
+    if (msg == CB_SETCURSEL || msg == CB_RESETCONTENT || msg == WM_SETFOCUS ||
+        msg == WM_KILLFOCUS || msg == WM_LBUTTONUP || msg == WM_KEYUP)
+        InvalidateRect(combo, nullptr, FALSE);
+    return result;
 }
 
 void drawRoundedButton(const DRAWITEMSTRUCT& item) {
     const bool pressed = (item.itemState & ODS_SELECTED) != 0;
     const bool disabled = (item.itemState & ODS_DISABLED) != 0;
-    const bool primary = item.CtlID == IdFullscreen;
+    const bool primary = item.CtlID == IdFullscreen && !disabled;
     const bool audio = item.CtlID == IdAudio;
 
     RECT bounds = item.rcItem;
-    HBRUSH background = CreateSolidBrush(audio ? kBackground :
-                                         (primary ? (pressed ? RGB(28, 150, 99) : kAccent)
+    FillRect(item.hDC, &bounds, gPanelBrush);
+    HBRUSH background = CreateSolidBrush(audio ? kPanel :
+                                         (primary ? (pressed ? RGB(20, 87, 182) : kAccent)
                                                   : (pressed ? kControlPressed : kControl)));
-    HPEN border = CreatePen(PS_SOLID, 1, audio ? kBackground : (primary ? kAccentBright : kBorder));
+    HPEN border = CreatePen(PS_SOLID, 1, audio ? kPanel : (primary ? kAccentBright : kBorder));
     HGDIOBJ oldBrush = SelectObject(item.hDC, background);
     HGDIOBJ oldPen = SelectObject(item.hDC, border);
     RoundRect(item.hDC, bounds.left, bounds.top, bounds.right, bounds.bottom, 14, 14);
@@ -384,7 +451,7 @@ void drawRoundedButton(const DRAWITEMSTRUCT& item) {
         DrawTextW(item.hDC, label, -1, &bounds, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
 
-    if (!audio && (item.itemState & ODS_FOCUS)) {
+    if (item.itemState & ODS_FOCUS) {
         RECT focus = bounds;
         InflateRect(&focus, -4, -4);
         DrawFocusRect(item.hDC, &focus);
@@ -394,19 +461,18 @@ void drawRoundedButton(const DRAWITEMSTRUCT& item) {
 void drawDarkComboItem(const DRAWITEMSTRUCT& item) {
     if (item.itemID == static_cast<UINT>(-1)) return;
     const bool selected = (item.itemState & ODS_SELECTED) != 0;
-    HBRUSH background = CreateSolidBrush(selected ? RGB(31, 107, 82) : kControl);
+    HBRUSH background = CreateSolidBrush(selected ? RGB(24, 69, 127) : kControl);
     FillRect(item.hDC, &item.rcItem, background);
     DeleteObject(background);
 
-    wchar_t label[512]{};
-    SendMessageW(item.hwndItem, CB_GETLBTEXT, item.itemID, reinterpret_cast<LPARAM>(label));
+    const auto value = comboText(item.hwndItem, item.itemID);
     RECT textRect = item.rcItem;
     textRect.left += 12;
     textRect.right -= 8;
     SetBkMode(item.hDC, TRANSPARENT);
     SetTextColor(item.hDC, kText);
     SelectObject(item.hDC, gFont);
-    DrawTextW(item.hDC, label, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    DrawTextW(item.hDC, value.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 }
 
 bool loadNdi(std::wstring& error) {
@@ -700,40 +766,29 @@ void toggleOutput() {
     }
 }
 
+struct ReceiverLayout {
+    int left{20}, top{88}, right{}, bottom{}, sidebar{}, split{};
+    ReceiverLayout(int w, int h) : right(w - 20), bottom(h - 60),
+        sidebar(std::clamp(w / 3, 300, 390)), split(right - sidebar) {}
+};
+
 void layoutControls(int width, int height) {
-    const int margin = 24;
-    const int headerHeight = 76;
-    const int controlsHeight = 104;
-    const int statusHeight = 54;
-    const int contentWidth = std::max(100, width - margin * 2);
-
-    // Ações e fonte ficam na primeira linha. Monitor e áudio usam uma segunda
-    // linha para que os textos não sejam truncados em telas menores.
-    const int sourceWidth = std::max(260, contentWidth - 336);
-    MoveWindow(g.sources, margin, headerHeight, sourceWidth, 38, TRUE);
-    MoveWindow(g.refresh, width - margin - 326, headerHeight, 96, 38, TRUE);
-    MoveWindow(g.connect, width - margin - 220, headerHeight, 110, 38, TRUE);
-    MoveWindow(g.fullscreen, width - margin - 100, headerHeight, 100, 38, TRUE);
-
-    const int secondRow = headerHeight + 46;
-    MoveWindow(g.monitors, margin, secondRow, std::min(360, contentWidth - 210), 240, TRUE);
-    const int monitorWidth = std::min(360, contentWidth - 210);
-    MoveWindow(g.audio, margin + monitorWidth + 16, secondRow + 3, 180, 32, TRUE);
-    MoveWindow(g.resetCrop, margin + monitorWidth + 206, secondRow, 130, 38, TRUE);
-
-    roundControl(g.sources, sourceWidth, 38);
-    roundControl(g.monitors, monitorWidth, 38);
-    roundControl(g.audio, 180, 32);
-    roundControl(g.resetCrop, 130, 38);
-    roundControl(g.refresh, 96, 38);
-    roundControl(g.connect, 110, 38);
-    roundControl(g.fullscreen, 100, 38);
-
-    const int previewTop = headerHeight + controlsHeight;
-    const int previewHeight = std::max(120, height - previewTop - statusHeight - margin);
-    MoveWindow(g.preview, margin, previewTop, contentWidth, previewHeight, TRUE);
-    MoveWindow(g.status, margin, height - statusHeight, contentWidth / 2, 24, TRUE);
-    MoveWindow(g.details, margin + contentWidth / 2, height - statusHeight, contentWidth / 2, 24, TRUE);
+    if (width < 700 || height < 540) return;
+    const ReceiverLayout l(width, height);
+    const int x = l.split + 16, w = l.sidebar - 32;
+    const int half = (w - 8) / 2;
+    MoveWindow(g.sources, x, 146, w, 250, TRUE);
+    MoveWindow(g.refresh, x, 192, half, 36, TRUE);
+    MoveWindow(g.connect, x + half + 8, 192, w - half - 8, 36, TRUE);
+    MoveWindow(g.monitors, x, 312, w, 240, TRUE);
+    MoveWindow(g.audio, x, 356, w, 34, TRUE);
+    MoveWindow(g.resetCrop, x, 400, w, 36, TRUE);
+    MoveWindow(g.fullscreen, x, 448, w, 42, TRUE);
+    MoveWindow(g.preview, l.left + 12, l.top + 46, l.split - l.left - 38,
+        std::max(100, l.bottom - l.top - 58), TRUE);
+    MoveWindow(g.status, l.left + 22, height - 42, 235, 26, TRUE);
+    MoveWindow(g.details, l.left + 267, height - 42, width - l.left * 2 - 267, 26, TRUE);
+    InvalidateRect(g.window, nullptr, FALSE);
 }
 
 void ensureCropBounds(int width, int height) {
@@ -887,8 +942,11 @@ void paintPreview(HWND window) {
                   -1, &client, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
 
-    if (window != g.output)
-        FrameRect(backBuffer, &client, GetSysColorBrush(COLOR_WINDOWFRAME));
+    if (window != g.output) {
+        HBRUSH outline = CreateSolidBrush(kBorder);
+        FrameRect(backBuffer, &client, outline);
+        DeleteObject(outline);
+    }
     BitBlt(dc, 0, 0, clientWidth, clientHeight, backBuffer, 0, 0, SRCCOPY);
     EndPaint(window, &paint);
 }
@@ -959,26 +1017,26 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     case WM_CREATE: {
         g.window = window;
         g.sources = CreateWindowExW(0, WC_COMBOBOXW, nullptr, WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST |
-                                    CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL,
+                                    CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP,
                                     0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdSources), nullptr, nullptr);
-        g.refresh = CreateWindowExW(0, WC_BUTTONW, L"Atualizar", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        g.refresh = CreateWindowExW(0, WC_BUTTONW, L"Atualizar", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP,
                                     0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdRefresh), nullptr, nullptr);
-        g.connect = CreateWindowExW(0, WC_BUTTONW, L"Conectar", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        g.connect = CreateWindowExW(0, WC_BUTTONW, L"Conectar", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP,
                                     0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdConnect), nullptr, nullptr);
-        g.fullscreen = CreateWindowExW(0, WC_BUTTONW, L"Tela cheia", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        g.fullscreen = CreateWindowExW(0, WC_BUTTONW, L"Tela cheia", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP,
                                        0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdFullscreen), nullptr, nullptr);
         g.monitors = CreateWindowExW(0, WC_COMBOBOXW, nullptr, WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST |
-                                     CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL,
+                                     CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP,
                                      0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdMonitors), nullptr, nullptr);
-        g.audio = CreateWindowExW(0, WC_BUTTONW, L"Reproduzir áudio", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        g.audio = CreateWindowExW(0, WC_BUTTONW, L"Reproduzir áudio", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP,
                                   0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdAudio), nullptr, nullptr);
-        g.resetCrop = CreateWindowExW(0, WC_BUTTONW, L"Remover corte", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        g.resetCrop = CreateWindowExW(0, WC_BUTTONW, L"Remover corte", WS_CHILD | WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP,
                                       0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdResetCrop), nullptr, nullptr);
         g.preview = CreateWindowExW(0, kPreviewClass, nullptr, WS_CHILD | WS_VISIBLE,
                                     0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdPreview), nullptr, nullptr);
         g.status = CreateWindowExW(0, WC_STATICW, L"Inicializando…", WS_CHILD | WS_VISIBLE,
                                    0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdStatus), nullptr, nullptr);
-        g.details = CreateWindowExW(0, WC_STATICW, L"Teste inicial de recepção de vídeo", WS_CHILD | WS_VISIBLE | SS_RIGHT,
+        g.details = CreateWindowExW(0, WC_STATICW, L"Procurando fontes na rede local", WS_CHILD | WS_VISIBLE | SS_RIGHT | SS_ENDELLIPSIS,
                                     0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdDetails), nullptr, nullptr);
 
         for (HWND control : {g.sources, g.monitors, g.audio, g.resetCrop, g.refresh, g.connect,
@@ -987,6 +1045,12 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             SetWindowTheme(control, L"DarkMode_Explorer", nullptr);
         }
         setFont(g.status, gFontBold);
+        setFont(g.details, gFontSmall);
+        for (HWND combo : {g.sources, g.monitors}) {
+            SetWindowTheme(combo, L"", L"");
+            SendMessageW(combo, CB_SETITEMHEIGHT, static_cast<WPARAM>(-1), 30);
+            SetWindowSubclass(combo, comboProc, 1, 0);
+        }
         SendMessageW(g.audio, BM_SETCHECK, BST_CHECKED, 0);
         SetWindowTextW(g.fullscreen, L"Exibir telão");
         refreshMonitors();
@@ -994,11 +1058,11 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         return 0;
     }
     case WM_SIZE:
-        layoutControls(LOWORD(lParam), HIWORD(lParam));
+        if (wParam != SIZE_MINIMIZED) layoutControls(LOWORD(lParam), HIWORD(lParam));
         return 0;
     case WM_GETMINMAXINFO: {
         auto* limits = reinterpret_cast<MINMAXINFO*>(lParam);
-        limits->ptMinTrackSize.x = 900;
+        limits->ptMinTrackSize.x = 850;
         limits->ptMinTrackSize.y = 600;
         return 0;
     }
@@ -1098,15 +1162,27 @@ LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         RECT client{};
         GetClientRect(window, &client);
         FillRect(dc, &client, gBackgroundBrush);
-        SetBkMode(dc, TRANSPARENT);
-        SetTextColor(dc, kText);
-        SelectObject(dc, gFontTitle);
-        RECT title{24, 18, client.right - 24, 52};
-        DrawTextW(dc, L"1Byte Labs Receiver", -1, &title, DT_LEFT | DT_SINGLELINE);
-        SetTextColor(dc, kAccent);
-        SelectObject(dc, gFontSmall);
-        RECT beta{24, 49, client.right - 24, 70};
-        DrawTextW(dc, L"RECEPTOR NDI PORTÁTIL  •  PROTÓTIPO", -1, &beta, DT_LEFT | DT_SINGLELINE);
+        const ReceiverLayout l(client.right, client.bottom);
+        if (HICON icon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(1)))
+            DrawIconEx(dc, 24, 22, icon, 40, 40, 0, nullptr, DI_NORMAL);
+        label(dc, {78, 16, 470, 49}, L"1Byte Labs Receiver", gFontTitle, kText);
+        label(dc, {80, 49, 470, 71}, L"Recepção NDI", gFontSmall, kMuted);
+        const bool connected = g.connected.load();
+        surface(dc, {l.right - 136, 25, l.right, 60}, kPanel, connected ? kSignal : kBorder, 28);
+        label(dc, {l.right - 133, 25, l.right - 3, 60}, connected ? L"Conectado" : L"Desconectado",
+            gFontSmall, connected ? kSignal : kMuted, DT_CENTER);
+        surface(dc, {l.left, l.top, l.split - 14, l.bottom}, kPanel, kBorder);
+        surface(dc, {l.split, l.top, l.right, 242}, kPanel, kBorder);
+        surface(dc, {l.split, 254, l.right, 505}, kPanel, kBorder);
+        label(dc, {l.left + 14, 97, l.split - 28, 123}, L"Prévia", gFontBold, kText);
+        label(dc, {l.split + 16, 95, l.right - 16, 120}, L"Conexão", gFontBold, kText);
+        label(dc, {l.split + 16, 121, l.right - 16, 144}, L"Fonte NDI", gFontSmall, kMuted);
+        label(dc, {l.split + 16, 260, l.right - 16, 286}, L"Saída para o telão", gFontBold, kText);
+        label(dc, {l.split + 16, 286, l.right - 16, 310}, L"Monitor de saída", gFontSmall, kMuted);
+        RECT line{l.left, client.bottom - 51, l.right, client.bottom - 50};
+        FillRect(dc, &line, GetSysColorBrush(COLOR_3DSHADOW));
+        surface(dc, {l.left, client.bottom - 34, l.left + 9, client.bottom - 25},
+            connected ? kSignal : kMuted, connected ? kSignal : kMuted, 9);
         EndPaint(window, &paint);
         return 0;
     }

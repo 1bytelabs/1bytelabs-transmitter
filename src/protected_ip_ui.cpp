@@ -271,32 +271,28 @@ void installUi(HWND hwnd) {
     gMain = hwnd;
 
     HFONT font = reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
-    HWND cover = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE,
-        536, 184, 374, 68, hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
-    SendMessageW(cover, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-
     gIpLabel = CreateWindowExW(0, L"STATIC", L"IP autorizado", WS_CHILD | WS_VISIBLE,
-        540, 190, 102, 22, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIpLabelId)),
+        540, 240, 102, 22, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIpLabelId)),
         GetModuleHandleW(nullptr), nullptr);
     gIpEdit = CreateWindowExW(0, L"EDIT", L"192.168.0.100",
         WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-        648, 184, 258, 36, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIpEditId)),
+        648, 232, 258, 34, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIpEditId)),
         GetModuleHandleW(nullptr), nullptr);
-    gIpHint = CreateWindowExW(0, L"STATIC", L"Somente esta máquina poderá receber no Modo protegido.",
+    gIpHint = CreateWindowExW(0, L"STATIC", L"Somente este IP pode receber no modo protegido.",
         WS_CHILD | WS_VISIBLE | SS_LEFT,
-        540, 224, 366, 22, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIpHintId)),
+        540, 267, 366, 18, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kIpHintId)),
         GetModuleHandleW(nullptr), nullptr);
 
     gAudioOption = CreateWindowExW(0, L"BUTTON", L"Enviar áudio",
         WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-        306, 342, 116, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAudioOptionId)),
+        306, 368, 188, 28, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAudioOptionId)),
         GetModuleHandleW(nullptr), nullptr);
     gAudioOutputLabel = CreateWindowExW(0, L"STATIC", L"Saída de áudio", WS_CHILD | WS_VISIBLE | SS_LEFT,
-        32, 578, 120, 18, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAudioOutputLabelId)),
+        36, 416, 120, 18, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAudioOutputLabelId)),
         GetModuleHandleW(nullptr), nullptr);
     gAudioOutput = CreateWindowExW(0, WC_COMBOBOXW, L"",
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
-        32, 598, 466, 120, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAudioOutputId)),
+        36, 439, 458, 120, hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(kAudioOutputId)),
         GetModuleHandleW(nullptr), nullptr);
 
     SendMessageW(gIpLabel, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
