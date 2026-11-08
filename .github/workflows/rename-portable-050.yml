@@ -37,6 +37,6 @@ jobs:
             fi
           done
           jq '{body: (.body |
-            gsub("1ByteLabs-Transmitter-v0\\.5\\.0-beta-Windows-x64\\.zip"; "1ByteLabs-Transmitter-v0.5.0-beta-Portable-Windows-x64.zip") |
-            gsub("1ByteLabs-Receiver-v0\\.5\\.0-beta-Windows-x64\\.zip"; "1ByteLabs-Receiver-v0.5.0-beta-Portable-Windows-x64.zip"))}' <<<"$release" |
+            split("1ByteLabs-Transmitter-v0.5.0-beta-Windows-x64.zip") | join("1ByteLabs-Transmitter-v0.5.0-beta-Portable-Windows-x64.zip") |
+            split("1ByteLabs-Receiver-v0.5.0-beta-Windows-x64.zip") | join("1ByteLabs-Receiver-v0.5.0-beta-Portable-Windows-x64.zip"))}' <<<"$release" |
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" --input - --jq .html_url
