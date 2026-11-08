@@ -337,6 +337,97 @@ void collectSettings() {
     saveSettings(iniPath(), g.settings);
 }
 
+// Reconfigure only the supported virtual display. The driver remains installed.
+struct VirtualDisplayState {
+    std::wstring device;
+    bool attached{};
+    bool canChange{};
+    POINT extendPosition{};
+};
+
+VirtualDisplayState getVirtualDisplayState() {
+    VirtualDisplayState result;
+    bool physicalPrimary = false;
+    bool haveNeighbor = false;
+    DWORD count = 0;
+    for (DWORD i = 0;; ++i) {
+        DISPLAY_DEVICEW device{};
+        device.cb = sizeof(device);
+        if (!EnumDisplayDevicesW(nullptr, i, &device, 0)) break;
+        if (device.StateFlags & DISPLAY_DEVICE_MIRRORING_DRIVER) continue;
+        const bool attached = (device.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) != 0;
+        const bool isVirtual = wcsstr(device.DeviceID, L"MttVDD") != nullptr ||
+            wcscmp(device.DeviceString, L"Virtual Display Driver") == 0;
+        if (isVirtual) {
+            ++count;
+            result.device = device.DeviceName;
+            result.attached = attached;
+        } else if (attached) {
+            physicalPrimary |= (device.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) != 0;
+            DEVMODEW mode{};
+            mode.dmSize = sizeof(mode);
+            if (EnumDisplaySettingsExW(device.DeviceName, ENUM_CURRENT_SETTINGS, &mode, 0)) {
+                const LONG right = mode.dmPosition.x + static_cast<LONG>(mode.dmPelsWidth);
+                if (!haveNeighbor || right > result.extendPosition.x) {
+                    result.extendPosition = {right, mode.dmPosition.y};
+                    haveNeighbor = true;
+                }
+            }
+        }
+    }
+    result.canChange = count == 1 && physicalPrimary && haveNeighbor;
+    return result;
+}
+
+bool setVirtualDisplayAttached(const VirtualDisplayState& display, bool attach) {
+    if (!display.canChange || display.attached == attach) return false;
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(mode);
+    if (attach) {
+        if (!EnumDisplaySettingsExW(display.device.c_str(), ENUM_REGISTRY_SETTINGS, &mode, 0) ||
+            !mode.dmPelsWidth || !mode.dmPelsHeight) {
+            mode = {};
+            mode.dmSize = sizeof(mode);
+            if (!EnumDisplaySettingsExW(display.device.c_str(), 0, &mode, 0)) return false;
+        }
+        mode.dmPosition = display.extendPosition;
+        mode.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT;
+    } else {
+        if (!EnumDisplaySettingsExW(display.device.c_str(), ENUM_CURRENT_SETTINGS, &mode, 0)) return false;
+        mode.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT;
+        mode.dmPelsWidth = mode.dmPelsHeight = 0;
+    }
+    if (ChangeDisplaySettingsExW(display.device.c_str(), &mode, nullptr, CDS_TEST, nullptr)
+        != DISP_CHANGE_SUCCESSFUL) return false;
+    return ChangeDisplaySettingsExW(display.device.c_str(), &mode, nullptr, CDS_UPDATEREGISTRY, nullptr)
+        == DISP_CHANGE_SUCCESSFUL;
+}
+
+void closeTransmitter(HWND hwnd) {
+    collectSettings();
+    if (g.settings.detachVirtualOnExit) {
+        const auto display = getVirtualDisplayState();
+        if (display.attached) {
+            const int index = g.settings.sourceIndex;
+            const bool virtualSelected = g.settings.captureKind == CaptureKind::Monitor && index >= 0 &&
+                static_cast<size_t>(index) < g.monitors.size() && g.monitors[index].virtualDisplay;
+            if (setVirtualDisplayAttached(display, false)) {
+                g.settings.restoreVirtualOnOpen = true;
+                if (virtualSelected) {
+                    g.settings.captureKind = CaptureKind::VirtualMonitor;
+                    g.settings.sourceIndex = 0;  // Only one virtual display is managed.
+                }
+                saveSettings(iniPath(), g.settings);
+            } else {
+                MessageBoxW(hwnd, L"Não foi possível desativar a tela virtual. "
+                    L"Use Configurações de Tela do Windows ou o Virtual Driver Control.",
+                    L"Tela virtual", MB_OK | MB_ICONINFORMATION);
+            }
+        }
+    }
+    DestroyWindow(hwnd);
+}
+
 void updateControls() {
     const bool running = g.running.load();
     const bool stopping = g.stopRequested.load();
@@ -811,6 +902,13 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         BOOL dark = TRUE;
         DwmSetWindowAttribute(hwnd, 20, &dark, sizeof(dark));
         g.settings = loadSettings(iniPath());
+        if (g.settings.restoreVirtualOnOpen) {
+            const auto display = getVirtualDisplayState();
+            if (display.attached || setVirtualDisplayAttached(display, true)) {
+                g.settings.restoreVirtualOnOpen = false;
+                saveSettings(iniPath(), g.settings);
+            }
+        }
         bool missingSavedVirtual = false;
         // Migrate the old filtered virtual-monitor index to the unified monitor list.
         if (g.settings.captureKind == CaptureKind::VirtualMonitor) {
@@ -848,7 +946,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_DISPLAYCHANGE:
         // Active capture validates monitor geometry and stops on topology changes.
-        if (!g.running.load()) refreshSources();
+        if (g.captureSource && !g.running.load()) refreshSources();
         return 0;
 
     case WM_TIMER:
@@ -871,24 +969,43 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (id == IdCaptureKind && HIWORD(wp) == CBN_SELCHANGE) refreshSources();
         else if (id == IdCaptureSource && HIWORD(wp) == CBN_SELCHANGE) updatePreview();
         else if (id == 1400 && !g.running.load()) {
-            const auto monitors = enumerateMonitors();
-            const bool detected = std::any_of(monitors.begin(), monitors.end(),
-                [](const MonitorSource& monitor) { return monitor.virtualDisplay; });
-            const int choice = MessageBoxW(hwnd,
-                detected ?
-                L"A tela virtual já está disponível.\n\n"
-                L"Sim: abrir as configurações de Tela do Windows para ajustar resolução e modo Estender.\n"
-                L"Não: abrir o utilitário oficial para gerenciar o driver.\n"
-                L"Cancelar: voltar." :
-                L"O pacote inclui o Virtual Driver Control original e o driver de vídeo assinado.\n\n"
-                L"Sim: abrir o utilitário como administrador. Nele, use Install Driver na seção de vídeo. "
-                L"Não é necessário instalar o driver de áudio.\n"
-                L"Não: abrir as configurações de Tela do Windows.\n"
-                L"Cancelar: voltar.\n\n"
-                L"Após instalar, use Estender, mantenha sua tela física como principal e atualize as fontes (↻).",
-                L"Configurar tela virtual", MB_YESNOCANCEL | MB_ICONINFORMATION);
-            if (choice != IDCANCEL) {
-                const bool openControl = detected ? choice == IDNO : choice == IDYES;
+            const auto display = getVirtualDisplayState();
+            const TASKDIALOG_BUTTON buttons[] = {
+                {2001, display.attached ? L"Desativar tela virtual" : L"Ativar tela virtual"},
+                {2002, L"Abrir configurações de Tela do Windows"},
+                {2003, L"Abrir Virtual Driver Control"}
+            };
+            TASKDIALOGCONFIG dialog{};
+            dialog.cbSize = sizeof(dialog);
+            dialog.hwndParent = hwnd;
+            dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_USE_COMMAND_LINKS |
+                (g.settings.detachVirtualOnExit ? TDF_VERIFICATION_FLAG_CHECKED : 0);
+            dialog.dwCommonButtons = TDCBF_CLOSE_BUTTON;
+            dialog.pszWindowTitle = L"Configurar tela virtual";
+            dialog.pszMainInstruction = display.attached ? L"Tela virtual ativa" : L"Tela virtual inativa";
+            dialog.pszContent = display.canChange ? L"O driver permanece instalado ao desativar a tela." :
+                L"Use o utilitário oficial para instalar ou gerenciar o driver.";
+            dialog.cButtons = display.canChange ? 3 : 2;
+            dialog.pButtons = display.canChange ? buttons : buttons + 1;
+            dialog.nDefaultButton = IDCLOSE;
+            dialog.pszVerificationText = L"Desativar tela virtual ao sair";
+            int choice = IDCLOSE;
+            BOOL checked = g.settings.detachVirtualOnExit;
+            if (FAILED(TaskDialogIndirect(&dialog, &choice, nullptr, &checked))) return 0;
+            g.settings.detachVirtualOnExit = checked != FALSE;
+            if (choice == 2001) {
+                if (setVirtualDisplayAttached(getVirtualDisplayState(), !display.attached)) {
+                    g.settings.restoreVirtualOnOpen = display.attached;
+                    refreshSources();
+                } else {
+                    MessageBoxW(hwnd, L"O Windows não aplicou a alteração. "
+                        L"Tente pelas configurações de Tela ou pelo Virtual Driver Control.",
+                        L"Tela virtual", MB_OK | MB_ICONINFORMATION);
+                }
+            }
+            collectSettings();
+            if (choice == 2002 || choice == 2003) {
+                const bool openControl = choice == 2003;
                 const auto control = executableDirectory() / L"virtual-display" / L"VDD Control.exe";
                 std::error_code error;
                 if (openControl && !std::filesystem::is_regular_file(control, error)) {
@@ -1070,8 +1187,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         InvalidateRect(hwnd, nullptr, FALSE);
         if (g.closeAfterWorker) {
             g.closeAfterWorker = false;
-            collectSettings();
-            DestroyWindow(hwnd);
+            closeTransmitter(hwnd);
         }
         return 0;
     }
@@ -1084,8 +1200,7 @@ LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             stopTransmission();
             return 0;
         }
-        collectSettings();
-        DestroyWindow(hwnd);
+        closeTransmitter(hwnd);
         return 0;
 
     case WM_DESTROY:

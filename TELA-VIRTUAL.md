@@ -29,7 +29,7 @@ automático da tela ainda precisam de validação em um computador Windows.
 
 1. Extraia **todo o pacote**, mantendo `virtual-display` ao lado do Transmitter.
 2. Clique em **Configurar tela virtual**, junto à seleção do que transmitir.
-3. Se não houver tela virtual, escolha **Sim** para abrir o Virtual Driver Control
+3. Se não houver tela virtual, escolha **Abrir Virtual Driver Control** para abrir o utilitário
    incluído e autorize como administrador. Na seção de vídeo, clique em **Install Driver**.
    Não é necessário instalar o driver de áudio. Não desative Secure Boot nem habilite modo de teste.
 4. Abra as configurações de Tela pelo mesmo botão e selecione **Estender estes vídeos**.
@@ -39,10 +39,16 @@ automático da tela ainda precisam de validação em um computador Windows.
 6. Selecione o monitor virtual e inicie a transmissão normalmente.
    No modo protegido, autorize o receptor como de costume.
 
-Quando uma tela virtual já é detectada, **Sim** abre as configurações de Tela
-para ajustar resolução e extensão; **Não** abre o utilitário oficial para gerenciar
-instalação, ativação e remoção. A instalação ainda é confirmada no utilitário original;
-o botão não instala nem remove drivers silenciosamente.
+**Configurar tela virtual** abre um painel com controles para ativar ou desativar
+a tela, abrir Tela no Windows ou abrir o Virtual Driver Control. A opção
+**Desativar tela virtual ao sair** vem marcada e vale ao encerrar o aplicativo
+normalmente, inclusive pela bandeja. O driver fica instalado. Se o Transmitter
+desativar a tela, tenta reativá-la na próxima abertura. A reativação coloca a
+tela ao lado dos monitores físicos; o Windows pode precisar ajustar a posição.
+
+O controle direto é limitado a uma tela virtual do driver suportado e requer
+um monitor físico como principal. Se o Windows rejeitar a alteração, use
+as configurações de Tela ou o utilitário oficial.
 
 A lista de monitores inclui telas físicas e virtuais. A tela do adaptador
 Virtual Display Driver / MttVDD aparece com a indicação **(virtual)**.
@@ -66,8 +72,8 @@ Tudo que estiver visível no monitor virtual faz parte da transmissão, sujeito
 Esta integração precisa de teste em Windows real com PowerPoint, navegador,
 vídeo e receptor NDI. Não foi validada em ARM. A alteração de posição/resolução
 ou desconexão do monitor invalida a captura; pare o envio e atualize as fontes.
-Ao encerrar, a tela virtual permanece sob controle do Windows/VDC. Para removê-la,
-desative-a pelo utilitário oficial após parar a transmissão.
+Se o aplicativo for encerrado à força, a tela pode permanecer ativa. Para remover
+o driver, use o utilitário oficial após parar a transmissão.
 
 O projeto do driver alerta sobre conflitos com atualizações de GPU/chipset.
 Siga sua documentação, inclusive a recomendação de desinstalar o driver antes

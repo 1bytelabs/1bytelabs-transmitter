@@ -27,6 +27,8 @@ AppSettings loadSettings(const std::filesystem::path& iniPath) {
     s.showCursor = readInt(iniPath, L"showCursor", 1) != 0;
     s.mode = readInt(iniPath, L"mode", 0) == 1 ? TransmissionMode::Quick : TransmissionMode::Protected;
     s.showHelpOnStart = readInt(iniPath, L"showHelpOnStart", 1) != 0;
+    s.detachVirtualOnExit = readInt(iniPath, L"detachVirtualOnExit", 1) != 0;
+    s.restoreVirtualOnOpen = readInt(iniPath, L"restoreVirtualOnOpen", 0) != 0;
     return s;
 }
 
@@ -39,4 +41,6 @@ void saveSettings(const std::filesystem::path& iniPath, const AppSettings& s) {
     writeInt(iniPath, L"showCursor", s.showCursor ? 1 : 0);
     writeInt(iniPath, L"mode", s.mode == TransmissionMode::Quick ? 1 : 0);
     writeInt(iniPath, L"showHelpOnStart", s.showHelpOnStart ? 1 : 0);
+    writeInt(iniPath, L"detachVirtualOnExit", s.detachVirtualOnExit ? 1 : 0);
+    writeInt(iniPath, L"restoreVirtualOnOpen", s.restoreVirtualOnOpen ? 1 : 0);
 }

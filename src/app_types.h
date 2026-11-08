@@ -37,4 +37,6 @@ struct AppSettings {
     bool showCursor{true};
     TransmissionMode mode{TransmissionMode::Protected};
     bool showHelpOnStart{true};
+    bool detachVirtualOnExit{true};
+    bool restoreVirtualOnOpen{false};
 };
